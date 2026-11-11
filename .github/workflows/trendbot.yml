@@ -31,6 +31,7 @@ jobs:
           sleep 20
           python bot.py trendwatch longshort $M &
           wait
+          python bot.py fundingonce || echo "Funding-boten misslyckades denna gång"
           python bot.py mailrapport
       - name: Spara resultat
         run: |

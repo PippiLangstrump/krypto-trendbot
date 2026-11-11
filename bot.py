@@ -2155,8 +2155,10 @@ def write_mail_report(path=None):
                   f"Bästa just nu: {t_txt(best)}  ",
                   f"Sämsta just nu: {t_txt(worst)}  ",
                   f"Äger/blankar: {coins or 'inget – väntar på bättre läge'}", ""]
-    if st.get("note"):
-        lines.append(st["note"])
+    try:
+        lines += funding_mail_lines(rate, now_ms)
+    except Exception as e:
+        lines.append(f"Bot 3: kunde inte läsa läget ({e})")
     lines.append(f"<sub>1 dollar = {rate:.2f} kr{'' if live_rate else ' (ungefär)'} · @PippiLangstrump</sub>")
     with open(path or os.path.join(HERE, "MAILRAPPORT.md"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
@@ -2259,6 +2261,144 @@ def fetch_all_prices():
     syms = "[" + ",".join(f'"{s}"' for s in SYMBOLS) + "]"
     raw = http_json("/api/v3/ticker/price?symbols=" + urllib.parse.quote(syms), rounds=1)
     return {d["symbol"]: float(d["price"]) for d in raw}
+
+
+# ============================================================================
+# BOT 3: FUNDING-INSAMLARE (marknadsneutral, papperspengar)
+# ============================================================================
+# Köper myntet (spot) och blankar samma mängd på futures samtidigt. Prisrörelser tar
+# ut varandra. Boten tjänar på "funding" som hävstångstraders betalar var 8:e timme
+# (00, 08, 16 UTC) när de flesta är långa - och betalar när det är tvärtom.
+# Väljer de mynt som betalat mest senaste dygnet, lämnar mynt där funding blivit negativ.
+FUND_STATE_FILE = os.path.join(HERE, "funding_state.json")
+FUND_SPOT_FEE = 0.001        # spot 0,1 %
+FUND_MAX_COINS = 4
+FUND_MIN_RATE = 0.00005      # minst 0,005 % per 8 h i snitt för att gå in
+FUND_SWITCH_MARGIN = 0.00005
+
+
+def funding_history(symbol, start_ms=None, limit=100):
+    """Faktiska funding-betalningar [(tid_ms, rate)] - Binance, reserv OKX och Bybit."""
+    try:
+        path = f"/fapi/v1/fundingRate?symbol={symbol}&limit={limit}" + (f"&startTime={int(start_ms)}" if start_ms else "")
+        req = urllib.request.Request("https://fapi.binance.com" + path, headers={"User-Agent": "paper-bot/1.0"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            raw = json.loads(r.read().decode())
+        return [(int(d["fundingTime"]), float(d["fundingRate"])) for d in raw]
+    except Exception:
+        pass
+    try:
+        url = f"https://api.bybit.com/v5/market/funding/history?category=linear&symbol={symbol}&limit=200"
+        if start_ms:
+            url += f"&startTime={int(start_ms)}"
+        d = json.loads(fetch_text(url))
+        rows = [(int(x["fundingRateTimestamp"]), float(x["fundingRate"])) for x in d["result"]["list"]]
+        return sorted(rows)
+    except Exception:
+        pass
+    inst = symbol[:-4] + "-USDT-SWAP"
+    d = json.loads(fetch_text(f"https://www.okx.com/api/v5/public/funding-rate-history?instId={inst}&limit=100"))
+    rows = [(int(x["fundingTime"]), float(x["realizedRate"] or x["fundingRate"])) for x in d["data"]]
+    rows = sorted(rows)
+    return [r for r in rows if not start_ms or r[0] >= start_ms]
+
+
+def fund_cost(notional):
+    """Kostnad för att öppna ELLER stänga båda benen (spot + futures) inkl. slippage."""
+    return notional * (FUND_SPOT_FEE + FEE + 2 * SLIPPAGE)
+
+
+def run_funding_once():
+    now = int(time.time() * 1000)
+    st = None
+    if os.path.exists(FUND_STATE_FILE):
+        try:
+            with open(FUND_STATE_FILE, encoding="utf-8") as f:
+                st = json.load(f)
+        except Exception:
+            st = None
+    if not st:
+        st = {"start_ms": now, "cash": START_CAPITAL, "pos": {}, "trades": [], "equity": [], "last_pick_day": None,
+              "funding_total": 0.0}
+        log("Funding-boten startar med 10 000 låtsas-USDT")
+    hist = {}
+    for sym in SYMBOLS:
+        try:
+            hist[sym] = funding_history(sym, now - 3 * 86400000)
+        except Exception as e:
+            log(f"  {sym}: ingen funding-data ({e})")
+    # 1) tillgodoräkna faktiska betalningar sedan senast
+    for sym, p in st["pos"].items():
+        for t, r in hist.get(sym, []):
+            if t > p["last_paid"] and t <= now:
+                amt = p["notional"] * r          # kort futures FÅR betalt när r > 0
+                p["earned"] += amt
+                st["funding_total"] += amt
+                p["last_paid"] = t
+    # 2) en gång per dygn (eller vid start): välj mynt
+    day = now // 86400000
+    avg = {s: sum(r for _, r in h[-3:]) / len(h[-3:]) for s, h in hist.items() if len(h) >= 3}
+    if st["last_pick_day"] != day:
+        st["last_pick_day"] = day
+        ranked = sorted(avg.items(), key=lambda x: -x[1])
+        want = [s for s, r in ranked if r >= FUND_MIN_RATE][:FUND_MAX_COINS]
+        # stäng mynt som inte längre lönar sig (behåll om skillnaden är liten -> färre affärer)
+        for sym in list(st["pos"]):
+            if sym not in want and (avg.get(sym, 0) < FUND_MIN_RATE or
+                                    (want and avg.get(want[-1], 0) - avg.get(sym, 0) > FUND_SWITCH_MARGIN)):
+                p = st["pos"].pop(sym)
+                back = p["margin"] + p["earned"] - fund_cost(p["notional"])
+                st["cash"] += back
+                st["trades"].append({"symbol": sym, "side": "carry", "ret": back / p["margin"] - 1,
+                                     "pnl": back - p["margin"], "entry_ts": p["ts"], "exit_ts": now})
+                log(f"  Funding: stänger {sym} ({money(back - p['margin'])} USDT)")
+        slots = [s for s in want if s not in st["pos"]][:FUND_MAX_COINS - len(st["pos"])]
+        eq_now = st["cash"] + sum(p["margin"] + p["earned"] for p in st["pos"].values())
+        for sym in slots:
+            margin = min(eq_now / FUND_MAX_COINS, st["cash"])
+            if margin < MIN_TRADE_USDT:
+                break
+            notional = margin / 2              # halva till spot, halva som säkerhet för blankningen
+            st["cash"] -= margin
+            st["pos"][sym] = {"margin": margin, "notional": notional, "earned": -fund_cost(notional),
+                              "ts": now, "last_paid": now, "rate_in": avg[sym]}
+            log(f"  Funding: går in i {sym} för {money(margin)} USDT (betalar ~{avg[sym] * 100:.4f} % per 8 h)")
+    st["avg_rates"] = avg
+    eq = st["cash"] + sum(p["margin"] + p["earned"] for p in st["pos"].values())
+    st["equity"].append([now, round(eq, 2)])
+    st["equity"] = st["equity"][-3000:]
+    with open(FUND_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(st, f)
+    os.replace(FUND_STATE_FILE + ".tmp", FUND_STATE_FILE)
+    log(f"Funding-boten: {money(eq)} USDT, {len(st['pos'])} mynt, insamlat {money(st['funding_total'])} USDT")
+    return st
+
+
+def funding_mail_lines(rate, now_ms):
+    if not os.path.exists(FUND_STATE_FILE):
+        return []
+    with open(FUND_STATE_FILE, encoding="utf-8") as f:
+        st = json.load(f)
+    eq_hist = st.get("equity") or [[now_ms, START_CAPITAL]]
+    eq = eq_hist[-1][1]
+    day_ago = next((e for t, e in reversed(eq_hist) if t <= now_ms - 86000 * 1000), eq_hist[0][1])
+    hour_tr = [t for t in st["trades"] if t["exit_ts"] >= now_ms - 3600 * 1000]
+    pos = st.get("pos", {})
+    best = max(pos.items(), key=lambda x: x[1]["earned"]) if pos else None
+    worst = min(pos.items(), key=lambda x: x[1]["earned"]) if pos else None
+
+    def t_txt(x):
+        if not x:
+            return "inga än"
+        s, p = x
+        return f"{s.replace('USDT', '')} {pct_sv(p['earned'] / p['margin'])} = {kr(p['earned'] * rate, sign=True)}"
+    verb = "tjänat" if eq >= START_CAPITAL else "förlorat"
+    coins = ", ".join(s.replace("USDT", "") for s in pos) or "inget – väntar på bra funding"
+    return [f"**Bot 3 – samlar funding (neutral): har {kr(eq * rate)}** – har {verb} {kr(abs(eq - START_CAPITAL) * rate)} totalt ({pct_sv(eq / START_CAPITAL - 1)})  ",
+            f"Senaste dygnet: {kr((eq - day_ago) * rate, sign=True)} · Affärer senaste timmen: {len(hour_tr)} · Insamlat totalt: {kr(st.get('funding_total', 0) * rate, sign=True)}  ",
+            f"Bästa just nu: {t_txt(best)}  ",
+            f"Sämsta just nu: {t_txt(worst)}  ",
+            f"Samlar på: {coins}", ""]
 
 
 def run_trend_live(mode="long", once=False, watch_minutes=0):
@@ -2553,6 +2693,8 @@ if __name__ == "__main__":
             run_self_improve(fake=len(args) > 1 and args[1] == "demo")
         elif mode == "trendwatch":  # molnet: en körning + bevaka varje sekund i N minuter
             run_trend_live(args[1], once=True, watch_minutes=float(args[2]) if len(args) > 2 else 55)
+        elif mode == "fundingonce":
+            run_funding_once()
         elif mode == "mailrapport":
             write_mail_report()
         elif mode == "trendonce":   # en körning (för molnet / GitHub Actions)
