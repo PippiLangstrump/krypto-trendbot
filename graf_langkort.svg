@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 260" width="900" height="260"><rect width="900" height="260" fill="#181b22"/>
-<line x1="40" y1="62.4" x2="860" y2="62.4" stroke="#555" stroke-dasharray="4 4"/>
-<text x="40" y="56.4" fill="#888" font-size="11">Start 10 000.00</text>
-<path d="M40.0,120.3 L251.0,158.9 L382.9,146.5 L427.3,148.4 L580.6,217.6 L655.7,179.9 L860.0,106.1" fill="none" stroke="#e5534b" stroke-width="2"/>
+<line x1="40" y1="181.3" x2="860" y2="181.3" stroke="#555" stroke-dasharray="4 4"/>
+<text x="40" y="175.3" fill="#888" font-size="11">Start 10 000.00</text>
+<path d="M40.0,194.9 L111.6,203.9 L156.4,201.0 L171.4,201.4 L223.5,217.6 L248.9,208.8 L318.3,191.5 L414.8,154.6 L417.7,156.7 L431.1,145.6 L444.5,141.1 L457.9,135.8 L471.3,121.5 L484.7,132.4 L498.1,133.7 L511.5,135.7 L524.9,118.3 L538.3,105.2 L551.7,89.0 L565.1,96.6 L578.5,101.5 L591.9,99.8 L605.3,98.5 L618.7,81.0 L632.1,80.2 L645.5,82.0 L658.9,76.5 L672.3,79.7 L685.8,70.8 L699.2,79.9 L712.6,71.6 L726.0,80.8 L739.4,93.9 L752.8,86.1 L766.2,79.2 L779.6,62.4 L793.0,87.0 L806.4,108.7 L819.8,106.0 L833.2,100.6 L846.6,98.8 L860.0,80.2" fill="none" stroke="#3fb68b" stroke-width="2"/>
 <text x="40" y="254" fill="#888" font-size="11">2026-11-11 22:05</text>
-<text x="860" y="254" fill="#888" font-size="11" text-anchor="end">2026-11-11 22:26</text>
-<text x="860" y="98.1" fill="#e5534b" font-size="12" text-anchor="end">9 993.65</text>
+<text x="860" y="254" fill="#888" font-size="11" text-anchor="end">2026-11-11 23:06</text>
+<text x="860" y="72.2" fill="#3fb68b" font-size="12" text-anchor="end">10 063.04</text>
 </svg>
