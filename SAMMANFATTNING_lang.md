@@ -1,13 +1,13 @@
 ## Trendbot (bara lång)
 
-Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-11 22:19 (UTC)
+Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-11 22:20 (UTC)
 
 ![Kapital över tid](graf_lang.svg)
 
 | | |
 |---|---|
 | Kapital | **10 012.55 USDT** (+0.13%) |
-| Köp & håll samma tid | +0.40% |
+| Köp & håll samma tid | +0.35% |
 | Avslutade affärer | 0 (0 % vinster) |
 | Snitt per affär | - |
 | Bästa | - |
