@@ -2080,20 +2080,48 @@ th{{color:#999;font-weight:500}} .pos{{color:#3fb68b}} .neg{{color:#e5534b}} sma
     return results
 
 
+def usd_sek():
+    """Aktuell växelkurs dollar -> kronor (gratis, ingen nyckel). Reserv: 10.5."""
+    for url, path in (("https://api.frankfurter.dev/v1/latest?base=USD&symbols=SEK", ("rates", "SEK")),
+                      ("https://api.frankfurter.app/latest?from=USD&to=SEK", ("rates", "SEK")),
+                      ("https://open.er-api.com/v6/latest/USD", ("rates", "SEK"))):
+        try:
+            d = json.loads(fetch_text(url, timeout=10))
+            v = float(d[path[0]][path[1]])
+            if 5 < v < 20:
+                return v, True
+        except Exception:
+            continue
+    return 10.5, False
+
+
+def kr(x, sign=False):
+    t = f"{abs(x):,.0f}".replace(",", " ")
+    if sign:
+        return ("+" if x >= 0 else "−") + t + " kr"
+    return ("−" if x < 0 else "") + t + " kr"
+
+
+def pct_sv(x):
+    return f"{x * 100:+.1f} %".replace(".", ",").replace("-", "−")
+
+
 def write_mail_report(path=None):
-    """Kort timrapport: pengar nu, trades senaste timmen, bästa/sämsta trade, plus/minus i %."""
+    """Enkel timrapport i kronor för varje bot."""
     now_ms = int(time.time() * 1000)
-    lines = [f"**{datetime.utcnow().strftime('%d/%m %H:%M')} UTC** · papperspengar", ""]
-    for tag, name in (("", "Bara lång"), ("_langkort", "Lång + kort")):
+    rate, live_rate = usd_sek()
+    lines = [f"**Läget kl {datetime.utcnow().strftime('%H:%M')} UTC** (låtsaspengar, varje bot startade med {kr(START_CAPITAL * rate)})", ""]
+    for tag, name in (("", "Bot 1 – köper bara"), ("_langkort", "Bot 2 – köper och blankar")):
         f = TREND_STATE_FILE.replace(".json", f"{tag}.json")
         if not os.path.exists(f):
             continue
         with open(f, encoding="utf-8") as fh:
             st = json.load(fh)
-        eq = (st.get("equity") or [[0, START_CAPITAL]])[-1][1]
+        eq_hist = st.get("equity") or [[now_ms, START_CAPITAL]]
+        eq = eq_hist[-1][1]
+        day_ago = next((e for t, e in reversed(eq_hist) if t <= now_ms - 86000 * 1000), eq_hist[0][1])
         tr = st.get("trades", [])
         hour_tr = [t for t in tr if t["exit_ts"] >= now_ms - 3600 * 1000]
-        # alla affärer: avslutade + öppna (värderade till senaste pris, som om de stängdes nu)
         allt = [{"symbol": t["symbol"], "side": t["side"], "ret": t["ret"], "pnl": t["pnl"]} for t in tr]
         lp = st.get("last_prices", {})
         for sym, p in st.get("pos", {}).items():
@@ -2102,28 +2130,123 @@ def write_mail_report(path=None):
             fill = exit_price(cur, side)
             back = p["margin"] * (1 - FEE) + p["qty"] * (fill - p["avg"]) - abs(p["qty"] * fill) * FEE
             allt.append({"symbol": sym, "side": side, "ret": back / p["margin"] - 1, "pnl": back - p["margin"], "open": True})
-        best = max(allt, key=lambda t: t["ret"]) if allt else None
-        worst = min(allt, key=lambda t: t["ret"]) if allt else None
+        best = max(allt, key=lambda t: t["pnl"]) if allt else None
+        worst = min(allt, key=lambda t: t["pnl"]) if allt else None
 
         def t_txt(t):
             if not t:
-                return "inga än"
-            return (f"{t['symbol'].replace('USDT', '')} {'lång' if t['side'] == 'long' else 'kort'} "
-                    f"{pct(t['ret'])} = {money(t['pnl'])} USDT{' (öppen)' if t.get('open') else ''}")
-        lines += [f"**{name}: {money(eq)} USDT ({pct(eq / START_CAPITAL - 1)})**",
-                  f"Mynt just nu: {', '.join(t['symbol'].replace('USDT', '') + (' ↑' if t['side'] == 'long' else ' ↓') for t in allt if t.get('open')) or 'inga (väntar)'}  ",
-                  f"Trades senaste timmen: {len(hour_tr)}  ",
-                  f"Bästa: {t_txt(best)}  ",
-                  f"Sämsta: {t_txt(worst)}", ""]
-    lines.append("@PippiLangstrump")
+                return "inga affärer än"
+            what = "köpt" if t["side"] == "long" else "blankat"
+            return f"{t['symbol'].replace('USDT', '')} ({what}) {pct_sv(t['ret'])} = {kr(t['pnl'] * rate, sign=True)}"
+        holding = [t for t in allt if t.get("open")]
+        coins = ", ".join(t["symbol"].replace("USDT", "") + (" (köpt)" if t["side"] == "long" else " (blankat)") for t in holding)
+        verb = "tjänat" if eq >= START_CAPITAL else "förlorat"
+        lines += [f"**{name}: har {kr(eq * rate)}** – har {verb} {kr(abs(eq - START_CAPITAL) * rate)} totalt ({pct_sv(eq / START_CAPITAL - 1)})  ",
+                  f"Senaste dygnet: {kr((eq - day_ago) * rate, sign=True)} · Affärer senaste timmen: {len(hour_tr)}  ",
+                  f"Bästa just nu: {t_txt(best)}  ",
+                  f"Sämsta just nu: {t_txt(worst)}  ",
+                  f"Äger/blankar: {coins or 'inget – väntar på bättre läge'}", ""]
+    if st.get("note"):
+        lines.append(st["note"])
+    lines.append(f"<sub>1 dollar = {rate:.2f} kr{'' if live_rate else ' (ungefär)'} · @PippiLangstrump</sub>")
     with open(path or os.path.join(HERE, "MAILRAPPORT.md"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
+
+
+# ============================================================================
+# SJÄLVFÖRBÄTTRING (körs en gång i veckan) - med skyddsräcken mot överanpassning
+# ============================================================================
+# Testar ~30 varianter av trendreglerna på ~5 års data. En ny variant tas bara in om
+# den är bättre än nuvarande BÅDE på hela perioden OCH senaste året OCH senaste
+# halvåret, och inte har klart större nedgång. Annars behålls nuvarande.
+TREND_CONFIG_FILE = os.path.join(HERE, "trend_config.json")
+TREND_DEFAULT = {"lookbacks": [7, 14, 28, 56], "vol": 0.005, "min_trade": 0.03}
+
+
+def load_trend_config(mode):
+    try:
+        with open(TREND_CONFIG_FILE, encoding="utf-8") as f:
+            return json.load(f).get(mode, dict(TREND_DEFAULT))
+    except Exception:
+        return dict(TREND_DEFAULT)
+
+
+def apply_trend_config(cfg):
+    global TREND_LOOKBACKS, TREND_VOL_TARGET, TREND_MIN_TRADE
+    TREND_LOOKBACKS, TREND_VOL_TARGET, TREND_MIN_TRADE = list(cfg["lookbacks"]), cfg["vol"], cfg["min_trade"]
+
+
+def describe_cfg(c):
+    return (f"perioder {'/'.join(map(str, c['lookbacks']))} dagar, insats {c['vol'] * 1000:.1f}‰/dag, "
+            f"min ändring {c['min_trade'] * 100:.0f} %")
+
+
+def run_self_improve(fake=False):
+    set_timeframe("1d")
+    data = {}
+    for i, sym in enumerate(SYMBOLS):
+        try:
+            data[sym] = fake_history(sym, 2000, seed=i + 1) if fake else fetch_history(sym, 5.5 * 365)
+        except Exception as e:
+            log(f"  {sym}: kunde inte hämtas ({e})")
+    data = {k: v for k, v in data.items() if len(v) > 200}
+    end_t = data[REGIME_SYMBOL].t[-1]
+    starts = {"hela": data[REGIME_SYMBOL].t[150], "365": end_t - 365 * 86400000, "180": end_t - 180 * 86400000}
+    cands = []
+    for lb in ([5, 10, 20, 40], [7, 14, 28, 56], [10, 20, 40, 80], [14, 28, 56, 112], [7, 14, 28, 56, 112]):
+        for vol in (0.0035, 0.005, 0.007):
+            for mt in (0.03, 0.06):
+                cands.append({"lookbacks": lb, "vol": vol, "min_trade": mt})
+    try:
+        with open(TREND_CONFIG_FILE, encoding="utf-8") as f:
+            conf = json.load(f)
+    except Exception:
+        conf = {}
+    conf.setdefault("history", [])
+    notes = []
+    for mode, name in (("long", "Bot 1"), ("longshort", "Bot 2")):
+        cur = conf.get(mode, dict(TREND_DEFAULT))
+
+        def evaluate(c):
+            apply_trend_config(c)
+            out = {}
+            for k, st_t in starts.items():
+                out[k] = curve_stats(trend_simulate(data, mode, st_t)["curve"])
+            return out
+        cur_r = evaluate(cur)
+        best, best_r = cur, cur_r
+        for c in cands:
+            if c == cur:
+                continue
+            r = evaluate(c)
+            better_everywhere = all(r[k]["sharpe"] > cur_r[k]["sharpe"] + 0.1 for k in starts)
+            not_riskier = r["hela"]["mdd"] <= cur_r["hela"]["mdd"] + 0.05
+            if better_everywhere and not_riskier and r["hela"]["sharpe"] > best_r["hela"]["sharpe"]:
+                best, best_r = c, r
+        if best is not cur:
+            conf[mode] = best
+            msg = (f"{name} har förbättrats: nya regler ({describe_cfg(best)}). Sharpe hela perioden "
+                   f"{cur_r['hela']['sharpe']:.2f} → {best_r['hela']['sharpe']:.2f}, senaste året "
+                   f"{cur_r['365']['sharpe']:.2f} → {best_r['365']['sharpe']:.2f}.")
+        else:
+            conf[mode] = cur
+            msg = (f"{name}: testade {len(cands)} varianter - ingen var tydligt bättre överallt, behåller nuvarande regler "
+                   f"(senaste året {pct(cur_r['365']['ret'])}, hela perioden {pct(cur_r['hela']['ret'])}).")
+        log(msg)
+        notes.append(msg)
+    conf["history"] = (conf["history"] + [{"ts": int(time.time() * 1000), "notes": notes}])[-52:]
+    with open(TREND_CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(conf, f, indent=1)
+    with open(os.path.join(HERE, "FORBATTRING.md"), "w", encoding="utf-8") as f:
+        f.write("**Veckans självförbättring**\n\n" + "\n\n".join(notes) + "\n\n@PippiLangstrump\n")
+    apply_trend_config(TREND_DEFAULT)
 
 
 def run_trend_live(mode="long", once=False):
     """Kör trendmodellen live med papperspengar. Kollar priser varje minut,
     ombalanserar en gång per dygn (när dagsljuset stänger, kl 01:00 svensk vintertid)."""
     set_timeframe("1d")
+    apply_trend_config(load_trend_config(mode))
     if not once:
         keep_awake()
     suffix = "" if mode == "long" else "_langkort"
@@ -2352,6 +2475,8 @@ if __name__ == "__main__":
             run_trend_live(args[1] if len(args) > 1 else "long")
         elif mode == "kombination":
             run_ensemble_test(fake=len(args) > 1 and args[1] == "demo")
+        elif mode == "forbattra":
+            run_self_improve(fake=len(args) > 1 and args[1] == "demo")
         elif mode == "trendonce":   # en körning (för molnet / GitHub Actions)
             for m in (args[1:] or ["long", "longshort"]):
                 run_trend_live(m, once=True)
