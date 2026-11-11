@@ -2111,6 +2111,7 @@ def write_mail_report(path=None):
             return (f"{t['symbol'].replace('USDT', '')} {'lång' if t['side'] == 'long' else 'kort'} "
                     f"{pct(t['ret'])} = {money(t['pnl'])} USDT{' (öppen)' if t.get('open') else ''}")
         lines += [f"**{name}: {money(eq)} USDT ({pct(eq / START_CAPITAL - 1)})**",
+                  f"Mynt just nu: {', '.join(t['symbol'].replace('USDT', '') + (' ↑' if t['side'] == 'long' else ' ↓') for t in allt if t.get('open')) or 'inga (väntar)'}  ",
                   f"Trades senaste timmen: {len(hour_tr)}  ",
                   f"Bästa: {t_txt(best)}  ",
                   f"Sämsta: {t_txt(worst)}", ""]
