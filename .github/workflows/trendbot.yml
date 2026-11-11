@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   issues: write
+  actions: write
 
 concurrency: trendbot
 
@@ -64,3 +65,8 @@ jobs:
             ISSUE=${URL##*/}
           fi
           gh issue comment "$ISSUE" --body-file MAILRAPPORT.md
+      - name: Starta nästa timme direkt (så det aldrig blir glapp)
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run trendbot.yml --ref main
