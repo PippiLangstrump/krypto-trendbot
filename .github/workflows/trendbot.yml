@@ -1,0 +1,41 @@
+name: Trendbot
+
+on:
+  schedule:
+    - cron: "7 * * * *"   # varje timme (UTC)
+  workflow_dispatch:       # kan startas manuellt med "Run workflow"
+
+permissions:
+  contents: write
+
+concurrency: trendbot
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Kör trendbotarna (papperspengar)
+        env:
+          BOT_NO_BROWSER: "1"
+        run: python bot.py trendonce long longshort
+      - name: Spara resultat
+        run: |
+          {
+            echo "# Krypto-trendbot (papperstrading)"
+            echo
+            echo "Körs automatiskt varje timme på GitHub och ombalanserar en gång per dygn. Inga riktiga pengar."
+            echo
+            cat SAMMANFATTNING_lang.md
+            echo
+            cat SAMMANFATTNING_langkort.md
+          } > README.md
+          git config user.name "trendbot"
+          git config user.email "trendbot@users.noreply.github.com"
+          git add -A
+          git commit -m "Uppdatering $(date -u +%F_%H:%M)" || echo "Inget nytt"
+          git push
