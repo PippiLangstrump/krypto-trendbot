@@ -2080,6 +2080,44 @@ th{{color:#999;font-weight:500}} .pos{{color:#3fb68b}} .neg{{color:#e5534b}} sma
     return results
 
 
+def write_mail_report(path=None):
+    """Kort timrapport för båda trendbotarna (skickas som mejl via GitHub)."""
+    lines = []
+    now_ms = int(time.time() * 1000)
+    for tag, name in (("", "Bara lång"), ("_langkort", "Lång + kort")):
+        f = TREND_STATE_FILE.replace(".json", f"{tag}.json")
+        if not os.path.exists(f):
+            continue
+        with open(f, encoding="utf-8") as fh:
+            st = json.load(fh)
+        eq_hist = st.get("equity") or [[now_ms, START_CAPITAL]]
+        eq = eq_hist[-1][1]
+        hour_ago = next((e for t, e in reversed(eq_hist) if t <= now_ms - 3500 * 1000), eq_hist[0][1])
+        day_ago = next((e for t, e in reversed(eq_hist) if t <= now_ms - 86000 * 1000), eq_hist[0][1])
+        tr = st.get("trades", [])
+        day_tr = [t for t in tr if t["exit_ts"] >= now_ms - 86400 * 1000]
+        realized = sum(t["pnl"] for t in tr)
+        wins = sum(1 for t in tr if t["pnl"] > 0)
+        pos = st.get("pos", {})
+        longs = sum(1 for p in pos.values() if p["qty"] > 0)
+        shorts = len(pos) - longs
+        lines += [f"### {name}",
+                  f"- **Kapital: {money(eq)} USDT** · totalt **{money(eq - START_CAPITAL)} USDT ({pct(eq / START_CAPITAL - 1)})**",
+                  f"- Senaste timmen: {money(eq - hour_ago)} USDT ({pct(eq / hour_ago - 1)}) · senaste dygnet: {money(eq - day_ago)} USDT ({pct(eq / day_ago - 1)})",
+                  f"- Avslutade affärer: {len(tr)} totalt ({wins} vinster), {len(day_tr)} senaste dygnet · realiserat {money(realized)} USDT",
+                  f"- Öppna positioner: {longs} lång, {shorts} kort", ""]
+    fng = None
+    try:
+        with open(TREND_STATE_FILE.replace(".json", "_langkort.json"), encoding="utf-8") as fh:
+            fng = json.load(fh).get("fng")
+    except Exception:
+        pass
+    head = f"**Timrapport {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC** (papperspengar, start 10 000 USDT per bot)"
+    tail = [f"Rädsla/girighet: {fng[0]} ({fng[1]})" if fng else "", "", "@PippiLangstrump"]
+    with open(path or os.path.join(HERE, "MAILRAPPORT.md"), "w", encoding="utf-8") as fh:
+        fh.write("\n".join([head, ""] + lines + tail) + "\n")
+
+
 def run_trend_live(mode="long", once=False):
     """Kör trendmodellen live med papperspengar. Kollar priser varje minut,
     ombalanserar en gång per dygn (när dagsljuset stänger, kl 01:00 svensk vintertid)."""
@@ -2313,6 +2351,7 @@ if __name__ == "__main__":
         elif mode == "trendonce":   # en körning (för molnet / GitHub Actions)
             for m in (args[1:] or ["long", "longshort"]):
                 run_trend_live(m, once=True)
+            write_mail_report()
         elif mode == "trenddemo":
             run_trend_backtest(3, fake=True)
         elif mode in ("jamfor", "compare"):

@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency: trendbot
 
@@ -42,3 +43,15 @@ jobs:
           git commit -m "Uppdatering $(date -u +%F_%H:%M)" || echo "Inget nytt"
           git pull --rebase
           git push
+      - name: Skicka timrapport (GitHub mejlar den till dig)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE=$(gh issue list --label timrapport --state open --json number --jq '.[0].number' || true)
+          if [ -z "$ISSUE" ]; then
+            gh label create timrapport --color 1f883d --description "Timrapporter från trendbotten" || true
+            URL=$(gh issue create --title "Timrapporter från trendbotten" --label timrapport \
+              --body "Här kommer en kort rapport varje timme (papperspengar). @PippiLangstrump får dem som mejl.")
+            ISSUE=${URL##*/}
+          fi
+          gh issue comment "$ISSUE" --body-file MAILRAPPORT.md
