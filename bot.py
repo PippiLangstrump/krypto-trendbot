@@ -2093,13 +2093,27 @@ def write_mail_report(path=None):
         eq = (st.get("equity") or [[0, START_CAPITAL]])[-1][1]
         tr = st.get("trades", [])
         hour_tr = [t for t in tr if t["exit_ts"] >= now_ms - 3600 * 1000]
-        best = max(tr, key=lambda t: t["ret"]) if tr else None
-        worst = min(tr, key=lambda t: t["ret"]) if tr else None
+        # alla affärer: avslutade + öppna (värderade till senaste pris, som om de stängdes nu)
+        allt = [{"symbol": t["symbol"], "side": t["side"], "ret": t["ret"], "pnl": t["pnl"]} for t in tr]
+        lp = st.get("last_prices", {})
+        for sym, p in st.get("pos", {}).items():
+            cur = lp.get(sym, p["avg"])
+            side = "long" if p["qty"] > 0 else "short"
+            fill = exit_price(cur, side)
+            back = p["margin"] * (1 - FEE) + p["qty"] * (fill - p["avg"]) - abs(p["qty"] * fill) * FEE
+            allt.append({"symbol": sym, "side": side, "ret": back / p["margin"] - 1, "pnl": back - p["margin"], "open": True})
+        best = max(allt, key=lambda t: t["ret"]) if allt else None
+        worst = min(allt, key=lambda t: t["ret"]) if allt else None
 
         def t_txt(t):
-            return f"{pct(t['ret'])} ({t['symbol'].replace('USDT', '')})" if t else "inga än"
+            if not t:
+                return "inga än"
+            return (f"{t['symbol'].replace('USDT', '')} {'lång' if t['side'] == 'long' else 'kort'} "
+                    f"{pct(t['ret'])} = {money(t['pnl'])} USDT{' (öppen)' if t.get('open') else ''}")
         lines += [f"**{name}: {money(eq)} USDT ({pct(eq / START_CAPITAL - 1)})**",
-                  f"Trades senaste timmen: {len(hour_tr)} · Bästa: {t_txt(best)} · Sämsta: {t_txt(worst)}", ""]
+                  f"Trades senaste timmen: {len(hour_tr)}  ",
+                  f"Bästa: {t_txt(best)}  ",
+                  f"Sämsta: {t_txt(worst)}", ""]
     lines.append("@PippiLangstrump")
     with open(path or os.path.join(HERE, "MAILRAPPORT.md"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
@@ -2225,6 +2239,7 @@ def run_trend_live(mode="long", once=False):
                             trade_to(sym, tgt.get(sym, 0.0), prices[sym], now)
                     st["last_day"] = last_day
                     st["targets"] = tgt
+            st["last_prices"] = dict(prices)
             st["equity"].append([now, round(equity(), 2)])
             st["prices"] = dict(prices)
             if len(st["equity"]) > 6000:
