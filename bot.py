@@ -27,6 +27,7 @@ import time
 import itertools
 import urllib.request
 import urllib.error
+import urllib.parse
 import webbrowser
 from datetime import datetime
 
@@ -2141,6 +2142,14 @@ def write_mail_report(path=None):
         holding = [t for t in allt if t.get("open")]
         coins = ", ".join(t["symbol"].replace("USDT", "") + (" (köpt)" if t["side"] == "long" else " (blankat)") for t in holding)
         verb = "tjänat" if eq >= START_CAPITAL else "förlorat"
+        w = st.get("watch")
+        if w and now_ms - w.get("last_poll", 0) < 20 * 60 * 1000:
+            status = f"✅ igång – kollade priserna {w['polls']:,} gånger senaste körningen".replace(",", " ")
+        elif w:
+            status = f"⚠️ senaste priskollen var {fmt_ts(w.get('last_poll', 0))} – kan ha stannat"
+        else:
+            status = "✅ igång (kollar priserna varje timme)"
+        lines += [f"Status: {status}  "]
         lines += [f"**{name}: har {kr(eq * rate)}** – har {verb} {kr(abs(eq - START_CAPITAL) * rate)} totalt ({pct_sv(eq / START_CAPITAL - 1)})  ",
                   f"Senaste dygnet: {kr((eq - day_ago) * rate, sign=True)} · Affärer senaste timmen: {len(hour_tr)}  ",
                   f"Bästa just nu: {t_txt(best)}  ",
@@ -2242,7 +2251,17 @@ def run_self_improve(fake=False):
     apply_trend_config(TREND_DEFAULT)
 
 
-def run_trend_live(mode="long", once=False):
+TREND_EMERGENCY_STOP = 0.12   # en position som förlorat 12 % stängs direkt (väntar inte till nästa dygn)
+
+
+def fetch_all_prices():
+    """Alla mynts senaste pris i ett enda anrop (används varje sekund)."""
+    syms = "[" + ",".join(f'"{s}"' for s in SYMBOLS) + "]"
+    raw = http_json("/api/v3/ticker/price?symbols=" + urllib.parse.quote(syms), rounds=1)
+    return {d["symbol"]: float(d["price"]) for d in raw}
+
+
+def run_trend_live(mode="long", once=False, watch_minutes=0):
     """Kör trendmodellen live med papperspengar. Kollar priser varje minut,
     ombalanserar en gång per dygn (när dagsljuset stänger, kl 01:00 svensk vintertid)."""
     set_timeframe("1d")
@@ -2316,8 +2335,61 @@ def run_trend_live(mode="long", once=False):
                 cur["avg"] = (cur["qty"] * cur["avg"] + q * fill) / tot
                 cur["qty"], cur["margin"] = tot, cur["margin"] + margin
             else:
-                st["pos"][sym] = {"qty": q, "avg": fill, "margin": margin, "ts": now}
+                hb = hist.get(sym)
+                dv = trend_vol(hb.c, len(hb.c) - 1) if hb is not None and len(hb) > 40 else None
+                stop_pct = max(0.05, min(0.15, 3 * dv)) if dv else TREND_EMERGENCY_STOP
+                st["pos"][sym] = {"qty": q, "avg": fill, "margin": margin, "ts": now, "stop_pct": stop_pct}
             log(f"  {'KÖPT' if side == 'long' else 'BLANKAT'} {sym} för {money(margin)} USDT @ {fill:.6g}")
+
+    def save():
+        st["last_prices"] = dict(prices)
+        with open(state_file + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(st, f)
+        os.replace(state_file + ".tmp", state_file)
+
+    def watch(end_ms):
+        """Bevakar priserna varje sekund fram till end_ms."""
+        polls, fails, last_eq, last_save, start = 0, 0, 0, time.time(), int(time.time() * 1000)
+        log(f"Bevakar priserna varje sekund till {fmt_ts(end_ms)}")
+        while int(time.time() * 1000) < end_ms:
+            t1 = time.time()
+            now = int(t1 * 1000)
+            try:
+                prices.update(fetch_all_prices())
+                polls += 1
+                st["watch"] = {"start": start, "polls": polls, "fails": fails, "last_poll": now}
+            except Exception:
+                fails += 1
+            for sym, p in list(st["pos"].items()):
+                cur = prices.get(sym)
+                if cur is None:
+                    continue
+                r = (cur / p["avg"] - 1) * (1 if p["qty"] > 0 else -1)
+                if r <= -p.get("stop_pct", TREND_EMERGENCY_STOP):
+                    log(f"  STOP-LOSS: {sym} har gått {pct(r)} emot oss - stänger direkt")
+                    trade_to(sym, 0.0, cur, now)
+                    st.setdefault("blocked", {})[sym] = (now // 86400000 + 1) * 86400000 + 3600 * 1000
+            if now - st.get("news_ms", 0) >= NEWS_EVERY_MIN * 60 * 1000:
+                try:
+                    news_check(st, now)
+                    st["news_ms"] = now
+                except Exception:
+                    pass
+                for sym in list(st["pos"]):
+                    if sym in st.get("blocked", {}) and sym in prices:
+                        log(f"  Stänger {sym} p.g.a. nyhetsvakten")
+                        trade_to(sym, 0.0, prices[sym], now)
+            if now - last_eq >= 60000:
+                st["equity"].append([now, round(equity(), 2)])
+                last_eq = now
+            if time.time() - last_save > 300:
+                save()
+                last_save = time.time()
+            time.sleep(max(0.0, 1.0 - (time.time() - t1)))
+        st["watch"] = {"start": start, "polls": polls, "fails": fails, "last_poll": st.get("watch", {}).get("last_poll", 0)}
+        log(f"Bevakning klar: {polls} priskontroller, {fails} missade")
+        save()
+        render_trend_live(st, prices, equity(), path)
 
     errors = 0
     while True:
@@ -2373,6 +2445,8 @@ def run_trend_live(mode="long", once=False):
             os.replace(state_file + ".tmp", state_file)
             render_trend_live(st, prices, equity(), path)
             if once:
+                if watch_minutes > 0:
+                    watch(int(time.time() * 1000) + watch_minutes * 60 * 1000)
                 write_summary_md(st, prices, equity(), mode)
                 return
             if not opened:
@@ -2477,6 +2551,10 @@ if __name__ == "__main__":
             run_ensemble_test(fake=len(args) > 1 and args[1] == "demo")
         elif mode == "forbattra":
             run_self_improve(fake=len(args) > 1 and args[1] == "demo")
+        elif mode == "trendwatch":  # molnet: en körning + bevaka varje sekund i N minuter
+            run_trend_live(args[1], once=True, watch_minutes=float(args[2]) if len(args) > 2 else 55)
+        elif mode == "mailrapport":
+            write_mail_report()
         elif mode == "trendonce":   # en körning (för molnet / GitHub Actions)
             for m in (args[1:] or ["long", "longshort"]):
                 run_trend_live(m, once=True)

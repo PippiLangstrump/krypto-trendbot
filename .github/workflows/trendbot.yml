@@ -14,16 +14,24 @@ concurrency: trendbot
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Kör trendbotarna (papperspengar)
+      - name: Kör trendbotarna och bevaka priserna varje sekund (papperspengar)
         env:
           BOT_NO_BROWSER: "1"
-        run: python bot.py trendonce long longshort
+        run: |
+          M=$(( 66 - 10#$(date -u +%M) ))
+          if [ $M -gt 58 ]; then M=58; fi
+          echo "Bevakar i $M minuter"
+          python bot.py trendwatch long $M &
+          sleep 20
+          python bot.py trendwatch longshort $M &
+          wait
+          python bot.py mailrapport
       - name: Spara resultat
         run: |
           {
