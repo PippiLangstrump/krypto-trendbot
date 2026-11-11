@@ -2081,41 +2081,36 @@ th{{color:#999;font-weight:500}} .pos{{color:#3fb68b}} .neg{{color:#e5534b}} sma
 
 
 def write_mail_report(path=None):
-    """Kort timrapport för båda trendbotarna (skickas som mejl via GitHub)."""
-    lines = []
+    """Kort timrapport: pengar nu, affärer senaste timmen, bästa och sämsta trade."""
     now_ms = int(time.time() * 1000)
+    out = [f"**{datetime.utcnow().strftime('%d/%m %H:%M')} UTC** · papperspengar", ""]
     for tag, name in (("", "Bara lång"), ("_langkort", "Lång + kort")):
         f = TREND_STATE_FILE.replace(".json", f"{tag}.json")
         if not os.path.exists(f):
             continue
         with open(f, encoding="utf-8") as fh:
             st = json.load(fh)
-        eq_hist = st.get("equity") or [[now_ms, START_CAPITAL]]
-        eq = eq_hist[-1][1]
-        hour_ago = next((e for t, e in reversed(eq_hist) if t <= now_ms - 3500 * 1000), eq_hist[0][1])
-        day_ago = next((e for t, e in reversed(eq_hist) if t <= now_ms - 86000 * 1000), eq_hist[0][1])
-        tr = st.get("trades", [])
-        day_tr = [t for t in tr if t["exit_ts"] >= now_ms - 86400 * 1000]
-        realized = sum(t["pnl"] for t in tr)
-        wins = sum(1 for t in tr if t["pnl"] > 0)
-        pos = st.get("pos", {})
-        longs = sum(1 for p in pos.values() if p["qty"] > 0)
-        shorts = len(pos) - longs
-        lines += [f"### {name}",
-                  f"- **Kapital: {money(eq)} USDT** · totalt **{money(eq - START_CAPITAL)} USDT ({pct(eq / START_CAPITAL - 1)})**",
-                  f"- Senaste timmen: {money(eq - hour_ago)} USDT ({pct(eq / hour_ago - 1)}) · senaste dygnet: {money(eq - day_ago)} USDT ({pct(eq / day_ago - 1)})",
-                  f"- Avslutade affärer: {len(tr)} totalt ({wins} vinster), {len(day_tr)} senaste dygnet · realiserat {money(realized)} USDT",
-                  f"- Öppna positioner: {longs} lång, {shorts} kort", ""]
-    fng = None
-    try:
-        with open(TREND_STATE_FILE.replace(".json", "_langkort.json"), encoding="utf-8") as fh:
-            fng = json.load(fh).get("fng")
-    except Exception:
-        pass
-    head = f"**Timrapport {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC** (papperspengar, start 10 000 USDT per bot)"
-    tail = [f"Rädsla/girighet: {fng[0]} ({fng[1]})" if fng else "", "", "@PippiLangstrump"]
+        eq = (st.get("equity") or [[0, START_CAPITAL]])[-1][1]
+        hour = now_ms - 3600 * 1000
+        n_hour = sum(1 for t in st.get("trades", []) if t["exit_ts"] >= hour) + \
+            sum(1 for p in st.get("pos", {}).values() if p["ts"] >= hour)
+        items = [(t["ret"], t["pnl"], t["symbol"], "") for t in st.get("trades", [])]
+        prices = st.get("prices", {})
+        for sym, p in st.get("pos", {}).items():
+            if sym in prices:
+                r = (prices[sym] / p["avg"] - 1) * (1 if p["qty"] > 0 else -1)
+                items.append((r, r * p["margin"], sym, " (öppen)"))
+        if items:
+            b, w = max(items), min(items)
+            bw = (f"Bästa: {b[2]}{b[3]} {pct(b[0])} ({money(b[1])} USDT)  \n"
+                  f"Sämsta: {w[2]}{w[3]} {pct(w[0])} ({money(w[1])} USDT)")
+        else:
+            bw = "Bästa/sämsta: inga affärer än"
+        out += [f"**{name}: {money(eq)} USDT** ({pct(eq / START_CAPITAL - 1)})  ",
+                f"Affärer senaste timmen: {n_hour}  ", bw, ""]
+    out.append("@PippiLangstrump")
     with open(path or os.path.join(HERE, "MAILRAPPORT.md"), "w", encoding="utf-8") as fh:
-        fh.write("\n".join([head, ""] + lines + tail) + "\n")
+        fh.write("\n".join(out) + "\n")
 
 
 def run_trend_live(mode="long", once=False):
@@ -2239,6 +2234,7 @@ def run_trend_live(mode="long", once=False):
                     st["last_day"] = last_day
                     st["targets"] = tgt
             st["equity"].append([now, round(equity(), 2)])
+            st["prices"] = dict(prices)
             if len(st["equity"]) > 6000:
                 st["equity"] = st["equity"][:3000:2] + st["equity"][3000:]
             with open(state_file + ".tmp", "w", encoding="utf-8") as f:
