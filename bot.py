@@ -1894,9 +1894,190 @@ def write_summary_md(st, prices, eq, mode):
         lines.append(f"| {s} | {'Lång' if p['qty'] > 0 else 'Kort'} | {money(p['margin'])} | {pct(r)} |")
     if not st["pos"]:
         lines.append("| (inga) | | | |")
-    path = os.path.join(HERE, f"SAMMANFATTNING_{'lang' if mode == 'long' else 'langkort'}.md")
+    tag = 'lang' if mode == 'long' else 'langkort'
+    svg = equity_svg(st["equity"])
+    if svg.startswith("<svg"):
+        svg = svg.replace('<svg viewBox="0 0 900 260" width="100%" preserveAspectRatio="none">',
+                          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 260" width="900" height="260">'
+                          '<rect width="900" height="260" fill="#181b22"/>', 1)
+        with open(os.path.join(HERE, f"graf_{tag}.svg"), "w", encoding="utf-8") as f:
+            f.write(svg)
+        lines.insert(4, f"![Kapital över tid](graf_{tag}.svg)\n")
+    path = os.path.join(HERE, f"SAMMANFATTNING_{tag}.md")
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
+
+
+# ============================================================================
+# KOMBINATION AV KÄNDA STRATEGIER SOM LÄR SIG LÅNGSAMT
+# ============================================================================
+# A) Trend (time-series momentum) - samma som trendboten
+# B) Rotation: köp de 3 starkaste senaste 14 dagarna, blanka de 3 svagaste (veckovis)
+# C) Studs tillbaka: köp de 3 som fallit mest senaste 30 dagarna, blanka de 3 som stigit mest (veckovis)
+# Lärandet: var 30:e dag flyttas pengar mot de strategier som haft bäst
+# riskjusterad avkastning de senaste 90 dagarna - långsamt, aldrig på enstaka dagar.
+ENS_LEARN_EVERY = 30
+ENS_LOOKBACK = 90
+ENS_MIN_SHARE = 0.10
+
+
+def xs_targets(data, idx, t, look, k, reverse=False):
+    rets = []
+    for sym, b in data.items():
+        i = idx[sym].get(t)
+        if i is None or i < look + 31:
+            continue
+        rets.append((b.c[i] / b.c[i - look] - 1, sym))
+    if len(rets) < 2 * k + 1:
+        return {}
+    rets.sort()
+    losers, winners = [s for _, s in rets[:k]], [s for _, s in rets[-k:]]
+    longs, shorts = (losers, winners) if reverse else (winners, losers)
+    w = 0.5 / k
+    out = {s: w for s in longs}
+    out.update({s: -w for s in shorts})
+    return out
+
+
+ENS_STRATS = {
+    "trend": lambda data, idx, t: trend_targets(data, idx, t, "longshort"),
+    "rotation": lambda data, idx, t: xs_targets(data, idx, t, 14, 3),
+    "studs": lambda data, idx, t: xs_targets(data, idx, t, 30, 3, reverse=True),
+}
+
+
+def ensemble_simulate(data, start_t, learn=True, only=None):
+    master = max(data.values(), key=len)
+    idx = {s: {t: i for i, t in enumerate(b.t)} for s, b in data.items()}
+    names = only or list(ENS_STRATS)
+    meta = {n: 1 / len(names) for n in names}
+    sub = {n: {} for n in names}          # varje strategis egna vikter
+    sub_hist = {n: [] for n in names}     # varje strategis egen dagsavkastning
+    eq, w = START_CAPITAL, {}
+    curve, trades, costs, meta_log = [], 0, 0.0, []
+    cost_rate = FEE + SLIPPAGE
+    funding_day = SHORT_FUNDING_8H * 3 * BAR_MS / 86400000
+    day = 0
+    for j in range(1, len(master)):
+        t = master.t[j]
+        rets = {}
+        for sym, b in data.items():
+            i = idx[sym].get(t)
+            if i is not None and i > 0:
+                rets[sym] = b.c[i] / b.c[i - 1] - 1
+        if t >= start_t:
+            pnl = sum(wt * rets.get(sym, 0) - (abs(wt) * funding_day if wt < 0 else 0) for sym, wt in w.items())
+            eq *= 1 + pnl
+        for n in names:   # strategiernas egna resultat (för lärandet), även före start
+            sub_hist[n].append(sum(wt * rets.get(sym, 0) for sym, wt in sub[n].items()))
+        # nya delmål
+        weekly = (t // 86400000) % 7 == 0
+        for n in names:
+            if n == "trend" or weekly or not sub[n]:
+                tg = ENS_STRATS[n](data, idx, t)
+                if tg or n == "trend":
+                    turn = sum(abs(tg.get(s, 0) - sub[n].get(s, 0)) for s in set(tg) | set(sub[n]))
+                    if sub_hist[n]:
+                        sub_hist[n][-1] -= turn * cost_rate
+                    sub[n] = tg
+        # långsamt lärande
+        day += 1
+        if learn and day % ENS_LEARN_EVERY == 0 and len(sub_hist[names[0]]) > ENS_LOOKBACK:
+            sc = {}
+            for n in names:
+                h = sub_hist[n][-ENS_LOOKBACK:]
+                m = sum(h) / len(h)
+                sd = math.sqrt(sum((x - m) ** 2 for x in h) / len(h)) or 1e-9
+                sc[n] = max(0.0, m / sd * math.sqrt(365))
+            tot = sum(sc.values())
+            if tot > 0:
+                raw = {n: max(ENS_MIN_SHARE, sc[n] / tot) for n in names}
+            else:
+                raw = {n: 1.0 for n in names}
+            z = sum(raw.values())
+            meta = {n: raw[n] / z for n in names}
+            if t >= start_t:
+                meta_log.append([t, dict(meta)])
+        if t < start_t:
+            continue
+        tgt = {}
+        for n in names:
+            for sym, wt in sub[n].items():
+                tgt[sym] = tgt.get(sym, 0) + meta[n] * wt
+        gross = sum(abs(x) for x in tgt.values())
+        if gross > TREND_MAX_GROSS:
+            tgt = {k: v * TREND_MAX_GROSS / gross for k, v in tgt.items()}
+        for sym in set(w) | set(tgt):
+            new, old = tgt.get(sym, 0.0), w.get(sym, 0.0)
+            if abs(new - old) > TREND_MIN_TRADE or (abs(new) < 1e-9 and old != 0):
+                c = abs(new - old) * cost_rate * eq
+                eq -= c; costs += c; trades += 1
+                w[sym] = new
+        w = {k: v for k, v in w.items() if abs(v) > 1e-9}
+        curve.append([t, eq])
+    return {"curve": curve, "trades": trades, "costs": costs, "weights": w, "meta": meta, "meta_log": meta_log}
+
+
+def run_ensemble_test(years=5.5, fake=False, out_path=None):
+    """Jämför: trend ensam, varje strategi ensam, kombination utan och med lärande.
+    Över hela perioden och senaste 30/90/180/365 dagarna."""
+    set_timeframe("1d")
+    days = years * 365
+    data = {}
+    for i, sym in enumerate(SYMBOLS):
+        try:
+            data[sym] = fake_history(sym, int(days), seed=i + 1) if fake else fetch_history(sym, days)
+        except Exception as e:
+            log(f"  {sym}: kunde inte hämtas ({e})")
+    data = {k: v for k, v in data.items() if len(v) > 120}
+    end_t = data[REGIME_SYMBOL].t[-1]
+    first = data[REGIME_SYMBOL].t[TREND_LOOKBACKS[-1] + 31 + ENS_LOOKBACK]
+    periods = [("Hela perioden", first), ("365 dagar", end_t - 365 * 86400000), ("180 dagar", end_t - 180 * 86400000),
+               ("90 dagar", end_t - 90 * 86400000), ("30 dagar", end_t - 30 * 86400000)]
+    variants = [("Trend lång + kort (nuvarande)", dict(only=["trend"], learn=False)),
+                ("Rotation ensam", dict(only=["rotation"], learn=False)),
+                ("Studs tillbaka ensam", dict(only=["studs"], learn=False)),
+                ("Kombination, lika vikter", dict(learn=False)),
+                ("Kombination som lär sig", dict(learn=True))]
+    rows, results = "", {}
+    for name, kw in variants:
+        cells = ""
+        for pname, st_t in periods:
+            r = ensemble_simulate(data, st_t, **kw)
+            s_ = curve_stats(r["curve"])
+            results[(name, pname)] = (s_, r)
+            cells += (f"<td><b class='{cls(s_['ret'])}'>{pct(s_['ret'])}</b><br><small>nedgång {s_['mdd'] * 100:.0f}% · "
+                      f"Sharpe {s_['sharpe']:.2f}</small></td>")
+        rows += f"<tr><td>{name}</td>{cells}</tr>"
+        log(f"{name:32}: " + " | ".join(f"{p} {pct(results[(name, p)][0]['ret'])}" for p, _ in periods))
+    bh_cells = ""
+    for pname, st_t in periods:
+        s_ = curve_stats(buyhold_curve(data, st_t))
+        bh_cells += f"<td><b class='{cls(s_['ret'])}'>{pct(s_['ret'])}</b><br><small>nedgång {s_['mdd'] * 100:.0f}%</small></td>"
+    rows += f"<tr><td>Köp &amp; håll</td>{bh_cells}</tr>"
+    lr = results[("Kombination som lär sig", "Hela perioden")][1]
+    mrows = "".join(f"<tr><td>{fmt_ts(t)[:10]}</td>" + "".join(f"<td>{m[n] * 100:.0f}%</td>" for n in ENS_STRATS) + "</tr>"
+                    for t, m in lr["meta_log"][-12:])
+    head = "".join(f"<th>{p}</th>" for p, _ in periods)
+    html = f"""<!DOCTYPE html><html lang="sv"><head><meta charset="utf-8"><title>Kombination av strategier</title>
+<style>body{{background:#0f1115;color:#e6e6e6;font-family:Segoe UI,system-ui,sans-serif;padding:24px}}
+table{{border-collapse:collapse;width:100%;font-size:14px;background:#181b22;margin-bottom:24px}} td,th{{padding:9px;border-bottom:1px solid #262a33;text-align:left;vertical-align:top}}
+th{{color:#999;font-weight:500}} .pos{{color:#3fb68b}} .neg{{color:#e5534b}} small{{color:#999}} .muted{{color:#888}}</style></head><body>
+<h1>Kombination av kända strategier</h1>
+<p class="muted">Dagsdata, avgifter och slippage inräknade. Start 10 000 i varje period. Slut {fmt_ts(end_t)[:10]}.</p>
+<table><tr><th>Strategi</th>{head}</tr>{rows}</table>
+<h2>Hur den lärande kombinationen fördelade pengarna (senaste 12 omfördelningarna)</h2>
+<table><tr><th>Datum</th>{''.join(f'<th>{n}</th>' for n in ENS_STRATS)}</tr>{mrows}</table></body></html>"""
+    out_path = out_path or os.path.join(HERE, "kombination.html")
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(html)
+    md = ["| Strategi | " + " | ".join(p for p, _ in periods) + " |", "|---" * (len(periods) + 1) + "|"]
+    for name, _ in variants:
+        md.append(f"| {name} | " + " | ".join(pct(results[(name, p)][0]['ret']) for p, _ in periods) + " |")
+    with open(out_path.replace(".html", ".md"), "w", encoding="utf-8") as f:
+        f.write("\n".join(md) + "\n")
+    log(f"Rapport sparad: {out_path}")
+    return results
 
 
 def run_trend_live(mode="long", once=False):
@@ -2127,6 +2308,8 @@ if __name__ == "__main__":
             run_trend_recent(fake=True)
         elif mode == "trendlive":
             run_trend_live(args[1] if len(args) > 1 else "long")
+        elif mode == "kombination":
+            run_ensemble_test(fake=len(args) > 1 and args[1] == "demo")
         elif mode == "trendonce":   # en körning (för molnet / GitHub Actions)
             for m in (args[1:] or ["long", "longshort"]):
                 run_trend_live(m, once=True)

@@ -1,0 +1,33 @@
+name: Experiment - kombination av strategier
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency: trendbot
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Backtest kombination
+        env:
+          BOT_NO_BROWSER: "1"
+        run: |
+          mkdir -p experiment
+          python -c "import bot, os; bot.run_ensemble_test(out_path=os.path.join('experiment','kombination.html'))"
+      - name: Spara
+        run: |
+          git config user.name "trendbot"
+          git config user.email "trendbot@users.noreply.github.com"
+          git add experiment
+          git commit -m "Experiment: kombination av strategier" || echo "Inget nytt"
+          git pull --rebase
+          git push

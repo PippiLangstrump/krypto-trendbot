@@ -30,6 +30,8 @@ jobs:
             echo
             echo "Körs automatiskt varje timme på GitHub och ombalanserar en gång per dygn. Inga riktiga pengar."
             echo
+            echo "Detaljerade rapporter: trend_rapport_live.html och trend_rapport_live_langkort.html (ladda ner och öppna i webbläsaren)."
+            echo
             cat SAMMANFATTNING_lang.md
             echo
             cat SAMMANFATTNING_langkort.md
@@ -38,4 +40,5 @@ jobs:
           git config user.email "trendbot@users.noreply.github.com"
           git add -A
           git commit -m "Uppdatering $(date -u +%F_%H:%M)" || echo "Inget nytt"
+          git pull --rebase
           git push
