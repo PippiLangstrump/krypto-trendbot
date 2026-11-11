@@ -1734,8 +1734,16 @@ def read_headlines():
     return out[:150]
 
 
+NOT_THE_COIN = ["mercado bitcoin", "bitcoin.com", "bitcoin depot", "bitcoin suisse", "bitcoin magazine",
+                "ethereum foundation grant", "solana foundation grant"]
+BIG_COINS = ["BTCUSDT", "ETHUSDT"]          # påverkas sällan av hack hos andra - spärras bara vid förbud/avnotering
+BIG_COIN_BAD = ["ban ", "bans ", "banned", "delist"]
+
+
 def score_headline(title):
     t = " " + title.lower() + " "
+    for phrase in NOT_THE_COIN:
+        t = t.replace(phrase, " ")
     coins = [s for s, words in COIN_WORDS.items() if any(w in t for w in words)]
     bad = any(w in t for w in BAD_WORDS)
     mbad = any(w in t for w in MARKET_BAD)
@@ -1765,7 +1773,10 @@ def news_check(st, now):
         new_items.append(h)
         seen.add(h["title"])
         if sc <= -2:
+            low = " " + h["title"].lower() + " "
             for c in coins:
+                if c in BIG_COINS and not any(w in low for w in BIG_COIN_BAD):
+                    continue
                 blocked[c] = now + NEWS_BLOCK_HOURS * 3600 * 1000
                 log(f"  NYHETSVAKT: dålig nyhet om {c} -> undviker i {NEWS_BLOCK_HOURS} h: {h['title'][:90]}")
     st["news_seen"] = list(seen)[-600:]
