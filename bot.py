@@ -20,6 +20,7 @@ Bara Pythons standardbibliotek används - inget extra behöver installeras.
 
 import json
 import math
+import re
 import os
 import random
 import sys
@@ -1752,6 +1753,49 @@ def score_headline(title):
     return coins, (-2 if bad else (-1 if mbad else (1 if good else 0)))
 
 
+TRUMP_FEED = "https://www.trumpstruth.org/feed"
+RISK_OFF_WORDS = ["tariff", "sanction", "war ", "invasion", "military strike", "airstrike", "embargo",
+                  "retaliat", "trade war", "shut down", "default", "martial law", "nuclear"]
+RISK_OFF_HOURS = 6
+MUSK_HOURS = 24
+
+
+def social_check(st, now):
+    """Social media-vakt: Trumps inlägg (Truth Social-arkiv) och Musk i nyhetsrubrikerna.
+    Påverkar bara risken - öppnar aldrig affärer själv."""
+    import xml.etree.ElementTree as ET
+    soc = st.setdefault("social", {"risk_off_until": 0, "reason": "", "no_short": {}, "seen": []})
+    seen = set(soc.get("seen", []))
+    try:
+        root = ET.fromstring(fetch_text(TRUMP_FEED))
+        for it in list(root.iter("item"))[:20]:
+            txt = ((it.findtext("title") or "") + " " + (it.findtext("description") or "")).strip()
+            key = (it.findtext("guid") or it.findtext("link") or txt[:80])
+            if not txt or key in seen:
+                continue
+            seen.add(key)
+            low = " " + txt.lower() + " "
+            if any(w in low for w in RISK_OFF_WORDS):
+                soc["risk_off_until"] = now + RISK_OFF_HOURS * 3600 * 1000
+                soc["reason"] = "Trump: " + re.sub(r"<[^>]+>", " ", txt)[:120].strip()
+                log(f"  SOCIAL VAKT: Trump-inlägg kan skaka marknaden -> minskar risken i {RISK_OFF_HOURS} h: {soc['reason']}")
+    except Exception as e:
+        log(f"  Social vakt: kunde inte läsa Trumps inlägg ({e})")
+    for h in st.get("news", [])[:40]:
+        low = " " + h["title"].lower() + " "
+        if ("musk" in low or "elon" in low) and h.get("ts", 0) > now - MUSK_HOURS * 3600 * 1000:
+            for c in h.get("coins", []) or (["DOGEUSDT"] if "doge" in low else []):
+                if soc["no_short"].get(c, 0) < now:
+                    log(f"  SOCIAL VAKT: Musk nämner {c} -> blankar inte {c} i {MUSK_HOURS} h")
+                soc["no_short"][c] = now + MUSK_HOURS * 3600 * 1000
+    soc["no_short"] = {c: u for c, u in soc["no_short"].items() if u > now}
+    soc["seen"] = list(seen)[-300:]
+
+
+def risk_off(st, now):
+    return st.get("social", {}).get("risk_off_until", 0) > now
+
+
 def fear_greed():
     try:
         d = json.loads(fetch_text("https://api.alternative.me/fng/?limit=1"))["data"][0]
@@ -1787,6 +1831,7 @@ def news_check(st, now):
     v, txt = fear_greed()
     if v is not None:
         st["fng"] = [v, txt]
+    social_check(st, now)
     return len(heads)
 
 
@@ -2162,6 +2207,16 @@ def write_mail_report(path=None):
                   f"Sämsta just nu: {t_txt(worst)}  ",
                   f"Äger/blankar: {coins or 'inget – väntar på bättre läge'}", ""]
     try:
+        with open(TREND_STATE_FILE.replace(".json", "_langkort.json"), encoding="utf-8") as fh:
+            soc = json.load(fh).get("social", {})
+        if soc.get("risk_off_until", 0) > now_ms:
+            lines.append(f"⚠️ **Social vakt aktiv** – minskad risk till {fmt_ts(soc['risk_off_until'] + 3600000)[11:]}: {soc.get('reason', '')}  ")
+        if soc.get("no_short"):
+            lines.append("Musk-skydd (blankas inte): " + ", ".join(c.replace('USDT', '') for c in soc["no_short"]) + "  ")
+        lines.append("")
+    except Exception:
+        pass
+    try:
         lines += funding_mail_lines(rate, now_ms)
     except Exception as e:
         lines.append(f"Bot 3: kunde inte läsa läget ({e})")
@@ -2223,6 +2278,18 @@ def run_self_improve(fake=False):
     notes = []
     for mode, name in (("long", "Bot 1"), ("longshort", "Bot 2")):
         cur = conf.get(mode, dict(TREND_DEFAULT))
+        # live-resultat sedan reglerna senast ändrades: går det bra live krävs mer för att byta
+        live_ret = None
+        try:
+            with open(TREND_STATE_FILE.replace(".json", "" if mode == "long" else "_langkort.json"), encoding="utf-8") as fh:
+                eqh = json.load(fh).get("equity", [])
+            since = conf.get(f"{mode}_changed", 0)
+            base = next((e for t, e in eqh if t >= since), None)
+            if base and eqh:
+                live_ret = eqh[-1][1] / base - 1
+        except Exception:
+            pass
+        margin = 0.2 if (live_ret is not None and live_ret > 0) else 0.1
 
         def evaluate(c):
             apply_trend_config(c)
@@ -2236,19 +2303,21 @@ def run_self_improve(fake=False):
             if c == cur:
                 continue
             r = evaluate(c)
-            better_everywhere = all(r[k]["sharpe"] > cur_r[k]["sharpe"] + 0.1 for k in starts)
+            better_everywhere = all(r[k]["sharpe"] > cur_r[k]["sharpe"] + margin for k in starts)
             not_riskier = r["hela"]["mdd"] <= cur_r["hela"]["mdd"] + 0.05
             if better_everywhere and not_riskier and r["hela"]["sharpe"] > best_r["hela"]["sharpe"]:
                 best, best_r = c, r
+        live_txt = f" Live sedan förra ändringen: {pct(live_ret)}." if live_ret is not None else ""
         if best is not cur:
             conf[mode] = best
+            conf[f"{mode}_changed"] = int(time.time() * 1000)
             msg = (f"{name} har förbättrats: nya regler ({describe_cfg(best)}). Sharpe hela perioden "
                    f"{cur_r['hela']['sharpe']:.2f} → {best_r['hela']['sharpe']:.2f}, senaste året "
-                   f"{cur_r['365']['sharpe']:.2f} → {best_r['365']['sharpe']:.2f}.")
+                   f"{cur_r['365']['sharpe']:.2f} → {best_r['365']['sharpe']:.2f}." + live_txt)
         else:
             conf[mode] = cur
             msg = (f"{name}: testade {len(cands)} varianter - ingen var tydligt bättre överallt, behåller nuvarande regler "
-                   f"(senaste året {pct(cur_r['365']['ret'])}, hela perioden {pct(cur_r['hela']['ret'])}).")
+                   f"(senaste året {pct(cur_r['365']['ret'])}, hela perioden {pct(cur_r['hela']['ret'])})." + live_txt)
         log(msg)
         notes.append(msg)
     conf["history"] = (conf["history"] + [{"ts": int(time.time() * 1000), "notes": notes}])[-52:]
@@ -2511,7 +2580,12 @@ def run_trend_live(mode="long", once=False, watch_minutes=0):
                 if cur is None:
                     continue
                 r = (cur / p["avg"] - 1) * (1 if p["qty"] > 0 else -1)
-                if r <= -p.get("stop_pct", TREND_EMERGENCY_STOP):
+                lim = p.get("stop_pct", TREND_EMERGENCY_STOP) * (0.5 if risk_off(st, now) else 1.0)
+                if p["qty"] < 0 and sym in st.get("social", {}).get("no_short", {}):
+                    log(f"  SOCIAL VAKT: stänger blankningen i {sym} (Musk)")
+                    trade_to(sym, 0.0, cur, now)
+                    continue
+                if r <= -lim:
                     log(f"  STOP-LOSS: {sym} har gått {pct(r)} emot oss - stänger direkt")
                     trade_to(sym, 0.0, cur, now)
                     st.setdefault("blocked", {})[sym] = (now // 86400000 + 1) * 86400000 + 3600 * 1000
@@ -2575,6 +2649,12 @@ def run_trend_live(mode="long", once=False, watch_minutes=0):
                     for sym in st.get("blocked", {}):
                         if sym in tgt:
                             tgt[sym] = 0.0
+                    for sym in st.get("social", {}).get("no_short", {}):
+                        if tgt.get(sym, 0) < 0:
+                            tgt[sym] = 0.0
+                    if risk_off(st, now):
+                        log("  Social vakt aktiv -> halverar alla insatser idag")
+                        tgt = {k: v * 0.5 for k, v in tgt.items()}
                     log(f"Nytt dygn ({fmt_ts(last_day + BAR_MS)[:10]}) - kollar trenderna och ombalanserar:")
                     for sym in sorted(set(tgt) | set(st["pos"])):
                         if sym in prices:
