@@ -2111,7 +2111,13 @@ def write_mail_report(path=None):
     """Enkel timrapport i kronor för varje bot."""
     now_ms = int(time.time() * 1000)
     rate, live_rate = usd_sek()
-    lines = [f"**Läget kl {datetime.utcnow().strftime('%H:%M')} UTC** (låtsaspengar, varje bot startade med {kr(START_CAPITAL * rate)})", ""]
+    try:
+        from zoneinfo import ZoneInfo
+        se = datetime.now(ZoneInfo("Europe/Stockholm"))
+    except Exception:
+        se = datetime.utcnow() + __import__("datetime").timedelta(hours=1)
+    lines = [f"## 🕐 Kl {se.strftime('%H')}:00 – {se.strftime('%d/%m')}",
+             f"<sub>Låtsaspengar · varje bot startade med {kr(START_CAPITAL * rate)}</sub>", ""]
     for tag, name in (("", "Bot 1 – köper bara"), ("_langkort", "Bot 2 – köper och blankar")):
         f = TREND_STATE_FILE.replace(".json", f"{tag}.json")
         if not os.path.exists(f):
