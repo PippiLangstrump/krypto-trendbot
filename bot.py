@@ -2081,9 +2081,9 @@ th{{color:#999;font-weight:500}} .pos{{color:#3fb68b}} .neg{{color:#e5534b}} sma
 
 
 def write_mail_report(path=None):
-    """Kort timrapport: pengar nu, affärer senaste timmen, bästa och sämsta trade."""
+    """Kort timrapport: pengar nu, trades senaste timmen, bästa/sämsta trade, plus/minus i %."""
     now_ms = int(time.time() * 1000)
-    out = [f"**{datetime.utcnow().strftime('%d/%m %H:%M')} UTC** · papperspengar", ""]
+    lines = [f"**{datetime.utcnow().strftime('%d/%m %H:%M')} UTC** · papperspengar", ""]
     for tag, name in (("", "Bara lång"), ("_langkort", "Lång + kort")):
         f = TREND_STATE_FILE.replace(".json", f"{tag}.json")
         if not os.path.exists(f):
@@ -2091,26 +2091,18 @@ def write_mail_report(path=None):
         with open(f, encoding="utf-8") as fh:
             st = json.load(fh)
         eq = (st.get("equity") or [[0, START_CAPITAL]])[-1][1]
-        hour = now_ms - 3600 * 1000
-        n_hour = sum(1 for t in st.get("trades", []) if t["exit_ts"] >= hour) + \
-            sum(1 for p in st.get("pos", {}).values() if p["ts"] >= hour)
-        items = [(t["ret"], t["pnl"], t["symbol"], "") for t in st.get("trades", [])]
-        prices = st.get("prices", {})
-        for sym, p in st.get("pos", {}).items():
-            if sym in prices:
-                r = (prices[sym] / p["avg"] - 1) * (1 if p["qty"] > 0 else -1)
-                items.append((r, r * p["margin"], sym, " (öppen)"))
-        if items:
-            b, w = max(items), min(items)
-            bw = (f"Bästa: {b[2]}{b[3]} {pct(b[0])} ({money(b[1])} USDT)  \n"
-                  f"Sämsta: {w[2]}{w[3]} {pct(w[0])} ({money(w[1])} USDT)")
-        else:
-            bw = "Bästa/sämsta: inga affärer än"
-        out += [f"**{name}: {money(eq)} USDT** ({pct(eq / START_CAPITAL - 1)})  ",
-                f"Affärer senaste timmen: {n_hour}  ", bw, ""]
-    out.append("@PippiLangstrump")
+        tr = st.get("trades", [])
+        hour_tr = [t for t in tr if t["exit_ts"] >= now_ms - 3600 * 1000]
+        best = max(tr, key=lambda t: t["ret"]) if tr else None
+        worst = min(tr, key=lambda t: t["ret"]) if tr else None
+
+        def t_txt(t):
+            return f"{pct(t['ret'])} ({t['symbol'].replace('USDT', '')})" if t else "inga än"
+        lines += [f"**{name}: {money(eq)} USDT ({pct(eq / START_CAPITAL - 1)})**",
+                  f"Trades senaste timmen: {len(hour_tr)} · Bästa: {t_txt(best)} · Sämsta: {t_txt(worst)}", ""]
+    lines.append("@PippiLangstrump")
     with open(path or os.path.join(HERE, "MAILRAPPORT.md"), "w", encoding="utf-8") as fh:
-        fh.write("\n".join(out) + "\n")
+        fh.write("\n".join(lines) + "\n")
 
 
 def run_trend_live(mode="long", once=False):
