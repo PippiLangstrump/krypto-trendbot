@@ -1,13 +1,15 @@
-**11/11 22:21 UTC** · papperspengar
+**Läget kl 22:26 UTC** (låtsaspengar, varje bot startade med 99 317 kr)
 
-**Bara lång: 10 012.55 USDT (+0.13%)**
-Trades senaste timmen: 0  
-Bästa: PEPE lång +1.08% = 11.48 USDT (öppen)  
-Sämsta: PEPE lång +1.08% = 11.48 USDT (öppen)
+**Bot 1 – köper bara: har 99 464 kr** – har tjänat 147 kr totalt (+0,1 %)  
+Senaste dygnet: +158 kr · Affärer senaste timmen: 0  
+Bästa just nu: PEPE (köpt) +1,3 % = +137 kr  
+Sämsta just nu: PEPE (köpt) +1,3 % = +137 kr  
+Äger/blankar: PEPE (köpt)
 
-**Lång + kort: 9 982.90 USDT (-0.17%)**
-Trades senaste timmen: 0  
-Bästa: PEPE lång +1.08% = 7.19 USDT (öppen)  
-Sämsta: ETH kort -0.60% = -7.24 USDT (öppen)
+**Bot 2 – köper och blankar: har 99 254 kr** – har förlorat 63 kr totalt (−0,1 %)  
+Senaste dygnet: +21 kr · Affärer senaste timmen: 0  
+Bästa just nu: PEPE (köpt) +1,3 % = +85 kr  
+Sämsta just nu: ETH (blankat) −0,5 % = −57 kr  
+Äger/blankar: BNB (blankat), BONK (blankat), DOGE (blankat), ETH (blankat), PEPE (köpt), SOL (blankat), WIF (blankat), XRP (blankat)
 
-@PippiLangstrump
+<sub>1 dollar = 9.93 kr · @PippiLangstrump</sub>
