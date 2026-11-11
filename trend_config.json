@@ -1,0 +1,31 @@
+{
+ "history": [
+  {
+   "ts": 1794435925755,
+   "notes": [
+    "Bot 1 har f\u00f6rb\u00e4ttrats: nya regler (perioder 5/10/20/40 dagar, insats 3.5\u2030/dag, min \u00e4ndring 6 %). Sharpe hela perioden 1.09 \u2192 1.22, senaste \u00e5ret 0.07 \u2192 0.24.",
+    "Bot 2 har f\u00f6rb\u00e4ttrats: nya regler (perioder 7/14/28/56 dagar, insats 3.5\u2030/dag, min \u00e4ndring 3 %). Sharpe hela perioden 0.59 \u2192 0.76, senaste \u00e5ret 0.65 \u2192 0.82."
+   ]
+  }
+ ],
+ "long": {
+  "lookbacks": [
+   5,
+   10,
+   20,
+   40
+  ],
+  "vol": 0.0035,
+  "min_trade": 0.06
+ },
+ "longshort": {
+  "lookbacks": [
+   7,
+   14,
+   28,
+   56
+  ],
+  "vol": 0.0035,
+  "min_trade": 0.03
+ }
+}
