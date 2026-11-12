@@ -36,7 +36,8 @@ from datetime import datetime
 # INSTÄLLNINGAR  (ändra gärna här)
 # ----------------------------------------------------------------------------
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT",
-           "PEPEUSDT", "WIFUSDT", "BONKUSDT"]   # sista tre = memecoins (mycket mer svängiga)
+           "ADAUSDT", "AVAXUSDT", "LINKUSDT", "SUIUSDT",
+           "PEPEUSDT", "WIFUSDT", "BONKUSDT", "SHIBUSDT", "FLOKIUSDT"]   # sista fem = memecoins (mycket mer svängiga)
 TIMEFRAME = "1h"           # ljusens längd i live-läget: "5m", "15m" eller "1h" (se jämförelsen)
 START_CAPITAL = 10_000.0   # låtsaspengar i USDT
 FEE = 0.0005               # 0,05 % per köp och per sälj (Binance Futures, taker). Spot = 0.001
@@ -1707,7 +1708,9 @@ NEWS_EVERY_MIN = 10
 NEWS_BLOCK_HOURS = 48
 COIN_WORDS = {"BTCUSDT": ["bitcoin", "btc"], "ETHUSDT": ["ethereum", "ether ", "eth "], "SOLUSDT": ["solana", " sol "],
               "BNBUSDT": ["bnb", "binance coin"], "XRPUSDT": ["xrp", "ripple"], "DOGEUSDT": ["dogecoin", "doge"],
-              "PEPEUSDT": ["pepe"], "WIFUSDT": ["dogwifhat", " wif "], "BONKUSDT": ["bonk"]}
+              "PEPEUSDT": ["pepe"], "WIFUSDT": ["dogwifhat", " wif "], "BONKUSDT": ["bonk"],
+              "ADAUSDT": ["cardano", " ada "], "AVAXUSDT": ["avalanche", "avax"], "LINKUSDT": ["chainlink"],
+              "SUIUSDT": [" sui ", "sui network"], "SHIBUSDT": ["shiba inu", "shib"], "FLOKIUSDT": ["floki"]}
 BAD_WORDS = ["hack", "exploit", "stolen", "drained", "lawsuit", "sues ", "sued", "delist", "ban ", "bans ", "banned",
              "bankrupt", "insolven", "fraud", "rug pull", "halts withdrawals", "suspends withdrawals", "outage", "vulnerability"]
 MARKET_BAD = ["crash", "liquidations", "sell-off", "selloff", "plunge", "capitulation", "emergency"]
