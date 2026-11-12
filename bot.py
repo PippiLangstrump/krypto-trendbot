@@ -2803,6 +2803,39 @@ BOT_EXPLAIN = {
 }
 
 
+def _mini_svg(points, rate, color):
+    if len(points) < 2:
+        return "<div class='small'>Grafen dyker upp när boten kört en stund.</div>"
+    W, H, P = 600, 170, 8
+    xs = [p[0] for p in points]; ys = [p[1] * rate for p in points]
+    base = START_CAPITAL * rate
+    y0, y1 = min(min(ys), base), max(max(ys), base)
+    if y1 - y0 < 1:
+        y0 -= 1; y1 += 1
+    X = lambda v: P + (v - xs[0]) / max(1, xs[-1] - xs[0]) * (W - 2 * P)
+    Y = lambda v: H - P - (v - y0) / (y1 - y0) * (H - 2 * P)
+    step = max(1, len(points) // 400)
+    pts = list(zip(xs, ys))[::step] + [(xs[-1], ys[-1])]
+    d = " ".join(f"{'M' if i == 0 else 'L'}{X(a):.1f},{Y(b):.1f}" for i, (a, b) in enumerate(pts))
+    return (f'<svg viewBox="0 0 {W} {H}" width="100%"><line x1="0" x2="{W}" y1="{Y(base):.1f}" y2="{Y(base):.1f}" '
+            f'stroke="#555" stroke-dasharray="4 4"/><path d="{d}" fill="none" stroke="{color}" stroke-width="2"/>'
+            f'<text x="{W - 4}" y="14" fill="#999" font-size="12" text-anchor="end">högst {kr(max(ys))}</text>'
+            f'<text x="{W - 4}" y="{H - 4}" fill="#999" font-size="12" text-anchor="end">lägst {kr(min(ys))}</text></svg>')
+
+
+def _trade_rows(trs, rate):
+    rows = ""
+    for t in trs:
+        side = {"long": "köpt", "short": "blankat"}.get(t.get("side"), "funding")
+        why = t.get("reason", "")
+        if t.get("pattern"):
+            why = CHART_PATTERNS.get(t["pattern"], t["pattern"]) + (f" · {why}" if why else "")
+        rows += (f"<tr><td>{fmt_ts(t.get('exit_ts', 0) + 3600000)[5:16]}</td><td>{t['symbol'].replace('USDT', '')}</td><td>{side}</td>"
+                 f"<td class='{'pos' if t['pnl'] >= 0 else 'neg'}'>{pct_sv(t['ret'])}</td>"
+                 f"<td class='{'pos' if t['pnl'] >= 0 else 'neg'}'>{kr(t['pnl'] * rate, sign=True)}</td><td class='small'>{why}</td></tr>")
+    return rows
+
+
 def write_dashboard():
     import html as _h
     now_ms = int(time.time() * 1000)
@@ -2849,7 +2882,14 @@ def write_dashboard():
         else:
             extra = "Äger/blankar: " + (", ".join(s.replace("USDT", "") + (" ↑" if p.get("qty", 1) > 0 else " ↓") for s, p in pos.items()) or "inget")
         cards += f"""<div class="card" style="border-left:4px solid {c}">
-<details><summary class="name">{n} – {desc} <span class="info">ⓘ</span></summary><div class="explain">{_h.escape(BOT_EXPLAIN.get(n, ""))}</div></details>
+<details><summary class="name">{n} – {desc} <span class="info">ⓘ tryck för mer</span></summary>
+<div class="explain">{_h.escape(BOT_EXPLAIN.get(n, ""))}</div>
+<div class="sub">Historik</div>{_mini_svg(d['eqh'], rate, c)}
+{('<div class="sub">Bästa affärerna</div><table>' + _trade_rows(sorted(d['trades'], key=lambda t: -t['pnl'])[:5], rate) + '</table>'
+  '<div class="sub">Sämsta affärerna</div><table>' + _trade_rows(sorted(d['trades'], key=lambda t: t['pnl'])[:5], rate) + '</table>'
+  '<div class="sub">Alla affärer (senaste först)</div><div class="scroll"><table>' + _trade_rows(sorted(d['trades'], key=lambda t: -t.get('exit_ts', 0))[:100], rate) + '</table></div>')
+ if d['trades'] else '<div class="small">Inga avslutade affärer än.</div>'}
+</details>
 <div class="big">{kr(d['eq'] * rate)}</div>
 <div class="{'pos' if tot >= 0 else 'neg'}">{kr(tot * rate, sign=True)} totalt ({pct_sv(d['eq'] / START_CAPITAL - 1)})</div>
 <div class="small">Senaste dygnet: <span class="{'pos' if d['eq'] >= d['d24'] else 'neg'}">{kr((d['eq'] - d['d24']) * rate, sign=True)}</span> · öppna affärer: {len(pos)} · avslutade: {len(d['trades'])}</div>
@@ -2880,7 +2920,8 @@ h1{{font-size:22px;margin:4px 0}} h2{{font-size:16px;color:#bbb;margin:22px 0 8p
 .name{{font-size:14px;color:#ccc}} .big{{font-size:24px;font-weight:600;margin:4px 0}} .pos{{color:#3fb68b}} .neg{{color:#e5534b}}
 .box{{background:#181b22;border-radius:10px;padding:10px}} table{{width:100%;border-collapse:collapse;font-size:13px}} td{{padding:6px;border-bottom:1px solid #262a33}}
 .legend span{{margin-right:12px;font-size:12px}} summary{{cursor:pointer;list-style:none}} summary::-webkit-details-marker{{display:none}}
-.info{{color:#7cb7ff;font-size:13px}} .explain{{background:#11141a;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;color:#ccc;line-height:1.45}} ul{{padding-left:18px;font-size:13px;color:#bbb}}</style></head><body>
+.info{{color:#7cb7ff;font-size:12px}} .sub{{color:#bbb;font-size:13px;font-weight:600;margin:12px 0 4px}}
+.scroll{{max-height:260px;overflow-y:auto}} details table td{{font-size:12px;padding:4px}} .explain{{background:#11141a;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;color:#ccc;line-height:1.45}} ul{{padding-left:18px;font-size:13px;color:#bbb}}</style></head><body>
 <h1>📈 Kryptobotarna</h1><div class="muted">Låtsaspengar, riktiga priser · uppdaterad {_se_now().strftime('%d/%m %H:%M')} · laddar om var 5:e minut</div>
 <h2>Alla botar – % sedan start</h2><div class="box">{svg}<div class="legend">{''.join(f"<span style='color:{c}'>● {n}</span>" for n, _, _, c, _ in data)}</div></div>
 <h2>Botarna</h2>{cards}
