@@ -3734,7 +3734,7 @@ def run_copy_watch(minutes=55):
         for s in reversed(ok):
             try:
                 tx = _rpc("getTransaction", [s["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}])
-                time.sleep(0.4)
+                time.sleep(0.1)
                 sw = parse_swap(tx, wallet)
             except Exception:
                 continue
@@ -3767,10 +3767,12 @@ def run_copy_watch(minutes=55):
         now = int(time.time() * 1000)
         for kol, wallet in COPY_WALLETS.items():
             try:
-                poll(kol, wallet, now)
+                poll(kol, wallet, int(time.time() * 1000))
             except Exception as e:
                 log(f"  Kopieraren: kunde inte läsa {kol} ({e})")
-            time.sleep(1)
+                if "429" in str(e):
+                    time.sleep(5)                    # för många anrop -> andas lite
+            time.sleep(0.25)
         if time.time() - last_px > 60 and st["pos"]:
             last_px = time.time()
             for mint, p in list(st["pos"].items()):
@@ -3786,13 +3788,19 @@ def run_copy_watch(minutes=55):
                     sell(mint, 1.0, now, "stopp −70 %")
                 elif now - p["ts"] > COPY_MAX_HOURS * 3600000:
                     sell(mint, 1.0, now, "48 timmar – släpper")
-        st["equity"].append([now, round(equity(), 2)])
-        st["equity"] = st["equity"][-6000:]
-        st["last_prices"] = {k: p["price"] for k, p in st["pos"].items()}
-        with open(COPY_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:
-            json.dump(st, f)
-        os.replace(COPY_STATE_FILE + ".tmp", COPY_STATE_FILE)
-        time.sleep(max(1.0, min(20.0, end - time.time())))
+        if not st["equity"] or now - st["equity"][-1][0] >= 60000:
+            st["equity"].append([now, round(equity(), 2)])
+            st["equity"] = st["equity"][-6000:]
+            st["last_prices"] = {k: p["price"] for k, p in st["pos"].items()}
+            with open(COPY_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:
+                json.dump(st, f)
+            os.replace(COPY_STATE_FILE + ".tmp", COPY_STATE_FILE)
+        time.sleep(max(0.0, min(1.0, end - time.time())))   # alla 10 plånböcker kollas ungefär var 3:e sekund
+    st["equity"].append([int(time.time() * 1000), round(equity(), 2)])
+    st["last_prices"] = {k: p["price"] for k, p in st["pos"].items()}
+    with open(COPY_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(st, f)
+    os.replace(COPY_STATE_FILE + ".tmp", COPY_STATE_FILE)
     log(f"Kopieraren: {money(equity())} USDT, {len(st['pos'])} öppna, {len(st['trades'])} försäljningar")
 
 

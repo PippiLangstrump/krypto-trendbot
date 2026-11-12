@@ -17,22 +17,16 @@ jobs:
           python-version: "3.12"
       - run: |
           python - <<'PY'
-          import bot, time
-          for kol in ("Cented", "Theo", "Kev"):
-              w = bot.COPY_WALLETS[kol]
-              sigs = bot._rpc("getSignaturesForAddress", [w, {"limit": 1000}])
-              ok = [x for x in sigs if not x.get("err")]
-              span = (sigs[0]["blockTime"] - sigs[-1]["blockTime"]) if sigs else 0
-              print("SPAN", kol, len(sigs), "sig på", span, "s, ok", len(ok))
-              for sg in ok[:3]:
-                  tx = bot._rpc("getTransaction", [sg["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}])
-                  raw = tx["transaction"]["message"]["accountKeys"]
-                  keys = [k["pubkey"] for k in raw]
-                  i = keys.index(w)
-                  m = tx["meta"]
-                  print("  OK", kol, "signer", raw[i].get("signer"), "idx", i, "sol", (m["postBalances"][i] - m["preBalances"][i]) / 1e9,
-                        "tok", [(x.get("owner", "")[:5], x["mint"][:5], x["uiTokenAmount"].get("uiAmount")) for x in (m.get("postTokenBalances") or []) if x.get("owner") == w][:3],
-                        "pre", [(x["mint"][:5], x["uiTokenAmount"].get("uiAmount")) for x in (m.get("preTokenBalances") or []) if x.get("owner") == w][:3],
-                        "logs", [l[8:40] for l in (m.get("logMessages") or [])][:3])
-                  time.sleep(0.5)
+          import bot, time, json
+          calls = [0]
+          orig = bot._rpc
+          def counting(m, p):
+              calls[0] += 1
+              return orig(m, p)
+          bot._rpc = counting
+          bot.COPY_STATE_FILE = "/tmp/copy.json"
+          t = time.time()
+          bot.run_copy_watch(2)
+          st = json.load(open("/tmp/copy.json"))
+          print("RESULTAT anrop", calls[0], "på", round(time.time() - t), "s, köp", len(st["pos"]), [p["name"] for p in st["pos"].values()], "sett", st["seen_kol"])
           PY
