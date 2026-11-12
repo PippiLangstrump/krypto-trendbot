@@ -3612,26 +3612,26 @@ COPY_MIN_SOL = 0.5           # kopiera alla riktiga köp (hoppar bara över damm
 COPY_MAX_POS = 30
 COPY_STOP = -0.70
 COPY_MAX_HOURS = 48
-SOL_RPC = "https://api.mainnet-beta.solana.com"
+SOL_RPCS = ["https://solana-rpc.publicnode.com", "https://api.mainnet-beta.solana.com"]   # snabbast först
 WSOL = "So11111111111111111111111111111111111111112"
 STABLES = {"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"}
 
 
 def _rpc(method, params):
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
-    for i in range(3):
+    last_err = None
+    for url in SOL_RPCS:                       # snabba noden först, reserv om den krånglar
         try:
-            req = urllib.request.Request(SOL_RPC, data=body, headers={"Content-Type": "application/json",
-                                                                      "User-Agent": "paper-bot/1.0"})
-            with urllib.request.urlopen(req, timeout=20) as r:
+            req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json",
+                                                                  "User-Agent": "paper-bot/1.0"})
+            with urllib.request.urlopen(req, timeout=10) as r:
                 d = json.loads(r.read().decode())
             if "error" in d:
                 raise RuntimeError(d["error"].get("message"))
             return d["result"]
-        except Exception:
-            if i == 2:
-                raise
-            time.sleep(1.5 * (i + 1))
+        except Exception as e:
+            last_err = e
+    raise last_err
 
 
 def parse_swap(tx, wallet):
