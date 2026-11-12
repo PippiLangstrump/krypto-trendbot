@@ -17,16 +17,21 @@ jobs:
           python-version: "3.12"
       - run: |
           python - <<'PY'
-          import bot, time, json
+          import bot, time, json, collections
           now = int(time.time() * 1000)
-          c = bot.gem_candidates(now)
-          print("KANDIDATER", len(c))
-          for p in c[:8]:
-              print(p["chainId"], p["baseToken"]["symbol"], p["priceUsd"], p["liquidity"]["usd"], p["volume"]["h24"], p["fdv"])
-          if c:
-              p = c[0]
-              q = bot._dex(f"/latest/dex/pairs/{p['chainId']}/{p['pairAddress']}")
-              print("PAIRS-API OK", bool(q.get("pairs")))
-          pr = bot.fetch_all_prices()
-          print("PRISER", len(pr), sorted(pr)[:15])
+          toks = collections.Counter()
+          sample = {}
+          for path in ("/token-profiles/latest/v1", "/token-boosts/latest/v1", "/token-boosts/top/v1"):
+              try:
+                  d = bot._dex(path)
+                  print(path, type(d).__name__, len(d))
+                  for t in d:
+                      toks[t.get("chainId")] += 1
+                      sample.setdefault(t.get("chainId"), t.get("tokenAddress"))
+              except Exception as e:
+                  print(path, "FEL", e)
+          print("KEDJOR", toks.most_common(8))
+          addr = sample.get("solana")
+          r = bot._dex(f"/tokens/v1/solana/{addr}")
+          print("TOKENS-SVAR", type(r).__name__, json.dumps(r)[:1500])
           PY
