@@ -2860,6 +2860,79 @@ def _trade_rows(trs, rate):
     return rows
 
 
+def _local_day(ms):
+    return datetime.utcfromtimestamp(ms / 1000 + 3600).strftime("%m-%d")
+
+
+def consistency(eqh):
+    """Mått på om en bot går upp stadigt eller bara haft tur."""
+    if len(eqh) < 3:
+        return None
+    days = {}
+    for t, e in eqh:
+        days[_local_day(t)] = e
+    prev, rets = START_CAPITAL, []
+    for d_ in sorted(days):
+        rets.append((d_, days[d_] / prev - 1))
+        prev = days[d_]
+    peak, mdd, dd_series = START_CAPITAL, 0.0, []
+    for t, e in eqh:
+        peak = max(peak, e)
+        dd = (e - peak) / peak
+        mdd = min(mdd, dd)
+        dd_series.append((t, dd))
+    streak = best_streak = 0
+    for _, r in rets:
+        streak = streak + 1 if r < 0 else 0
+        best_streak = max(best_streak, streak)
+    # timavkastning -> stabilitet (avkastning delat med svängning, per år)
+    hourly, last_t, last_e = [], eqh[0][0], eqh[0][1]
+    for t, e in eqh:
+        if t - last_t >= 3600 * 1000:
+            hourly.append(e / last_e - 1)
+            last_t, last_e = t, e
+    stab = None
+    if len(hourly) >= 72:     # minst 3 dygn, annars blir måttet missvisande
+        m = sum(hourly) / len(hourly)
+        sd = math.sqrt(sum((x - m) ** 2 for x in hourly) / len(hourly)) or 1e-9
+        stab = m / sd * math.sqrt(24 * 365)
+    hours_up = sum(1 for x in hourly if x > 0)
+    return {"days": rets, "up_days": sum(1 for _, r in rets if r > 0), "mdd": mdd, "loss_streak": best_streak,
+            "stab": stab, "dd": dd_series, "hours_up": hours_up, "hours": len(hourly)}
+
+
+def _bars_svg(rets, rate_unused=None):
+    if not rets:
+        return ""
+    W, H = 600, 140
+    m = max(0.002, max(abs(r) for _, r in rets))
+    bw = min(60, (W - 20) / len(rets))
+    out = [f'<svg viewBox="0 0 {W} {H}" width="100%"><line x1="0" x2="{W}" y1="{H / 2}" y2="{H / 2}" stroke="#555"/>']
+    for i, (d_, r) in enumerate(rets):
+        h = abs(r) / m * (H / 2 - 18)
+        x = 10 + i * bw
+        y = H / 2 - h if r >= 0 else H / 2
+        col = "#3fb68b" if r >= 0 else "#e5534b"
+        out.append(f'<rect x="{x + 3:.1f}" y="{y:.1f}" width="{bw - 6:.1f}" height="{max(h, 1):.1f}" fill="{col}" rx="2"/>')
+        out.append(f'<text x="{x + bw / 2:.1f}" y="{H - 2}" fill="#888" font-size="10" text-anchor="middle">{d_[3:]}</text>')
+        out.append(f'<text x="{x + bw / 2:.1f}" y="{(y - 3) if r >= 0 else (y + h + 11):.1f}" fill="{col}" font-size="10" text-anchor="middle">{r * 100:+.1f}%</text>')
+    out.append("</svg>")
+    return "".join(out)
+
+
+def _dd_svg(dd):
+    if len(dd) < 2:
+        return ""
+    W, H = 600, 90
+    lo = min(-0.005, min(v for _, v in dd))
+    x0, x1 = dd[0][0], dd[-1][0]
+    step = max(1, len(dd) // 400)
+    pts = dd[::step] + [dd[-1]]
+    path = " ".join(f"{'M' if i == 0 else 'L'}{(t - x0) / max(1, x1 - x0) * W:.1f},{v / lo * (H - 14):.1f}" for i, (t, v) in enumerate(pts))
+    return (f'<svg viewBox="0 0 {W} {H}" width="100%"><path d="{path} L{W},0 L0,0 Z" fill="#e5534b33" stroke="#e5534b" stroke-width="1.5"/>'
+            f'<text x="{W - 4}" y="{H - 2}" fill="#999" font-size="11" text-anchor="end">värsta: {lo * 100:.1f} %</text></svg>')
+
+
 def write_dashboard():
     import html as _h
     now_ms = int(time.time() * 1000)
@@ -2891,6 +2964,17 @@ def write_dashboard():
         parts.append(f'<text x="{W - P}" y="{H - 12}" fill="#888" font-size="11" text-anchor="end">{fmt_ts(x1 + 3600000)[:16]}</text>')
         parts.append("</svg>")
         svg = "".join(parts)
+    crow = ""
+    for n, desc, f, c, d in data:
+        k = consistency(d["eqh"])
+        if not k:
+            continue
+        stab = "för tidigt" if k["stab"] is None else f"{k['stab']:.1f}"
+        crow += (f"<tr><td style='color:{c}'>{n}</td><td>{k['up_days']} av {len(k['days'])}</td>"
+                 f"<td>{k['hours_up']} av {k['hours']}</td><td class='neg'>{k['mdd'] * 100:.1f} %</td>"
+                 f"<td>{k['loss_streak']} dagar</td><td>{stab}</td></tr>")
+    cons_table = ("<table><tr class='th'><td>Bot</td><td>Plusdagar</td><td>Plustimmar</td><td>Största nedgång</td>"
+                  "<td>Längsta minussvit</td><td>Stabilitet</td></tr>" + crow + "</table>")
     cards = ""
     for i, (n, desc, f, c, d) in enumerate(data):
         tot = d["eq"] - START_CAPITAL
@@ -2919,6 +3003,8 @@ def write_dashboard():
 <details><summary class="name">{n} – {desc} <span class="info">ⓘ tryck för mer</span></summary>
 <div class="explain">{_h.escape(BOT_EXPLAIN.get(n, ""))}</div>
 <div class="sub">Historik</div>{_mini_svg(d['eqh'], rate, c)}
+<div class="sub">Dag för dag (grönt = plusdag, rött = minusdag)</div>{_bars_svg((consistency(d['eqh']) or {}).get('days', []))}
+<div class="sub">Nedgång från toppen (hur ont det gjort på vägen)</div>{_dd_svg((consistency(d['eqh']) or {}).get('dd', []))}
 {('<div class="sub">Bästa affärerna (även pågående)</div><table>' + _trade_rows(sorted([t for t in allt if t['pnl'] >= 0], key=lambda t: -t['pnl'])[:5], rate) + '</table>'
   '<div class="sub">Sämsta affärerna (även pågående)</div><table>' + _trade_rows(sorted([t for t in allt if t['pnl'] < 0], key=lambda t: t['pnl'])[:5], rate) + '</table>'
   '<div class="sub">Alla affärer (' + str(len(allt)) + ' st – öppna först, sen senaste)</div><div class="scroll"><table>' + _trade_rows(sorted(allt, key=lambda t: (not t.get('open'), -t.get('exit_ts', 0)))[:2000], rate) + '</table></div>')
@@ -2958,6 +3044,8 @@ h1{{font-size:22px;margin:4px 0}} h2{{font-size:16px;color:#bbb;margin:22px 0 8p
 .scroll{{max-height:300px;overflow:auto}} details table{{display:block;overflow-x:auto;white-space:nowrap}} .th td{{color:#888;font-size:11px}} .tiny{{color:#888;font-size:11px;margin-top:3px}} .b{{font-size:11px;padding:2px 6px;border-radius:8px;white-space:nowrap}} .b.open{{background:#173b2e;color:#5fd3a5}} .b.done{{background:#2a2e38;color:#aaa}} details table td{{font-size:12px;padding:4px}} .explain{{background:#11141a;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;color:#ccc;line-height:1.45}} ul{{padding-left:18px;font-size:13px;color:#bbb}}</style></head><body>
 <h1>📈 Kryptobotarna</h1><div class="muted">Låtsaspengar, riktiga priser · uppdaterad {_se_now().strftime('%d/%m %H:%M')} · laddar om var 5:e minut</div>
 <h2>Alla botar – % sedan start</h2><div class="box">{svg}<div class="legend">{''.join(f"<span style='color:{c}'>● {n}</span>" for n, _, _, c, _ in data)}</div></div>
+<h2>Går de upp stadigt – eller var det tur?</h2><div class="box">{cons_table}
+<div class="tiny">Stabilitet = avkastning delat med hur mycket den svänger (per år). Över 1 är bra, över 2 mycket bra. Måtten blir pålitliga först efter ungefär en vecka – en enda bra dag kan vara tur.</div></div>
 <h2>Botarna</h2>{cards}
 <h2>Senaste affärerna</h2><div class="box"><table>{trows}</table></div>
 <h2>Nyheter och vakter</h2><div class="box"><div class="small">{' · '.join(guard)}</div><ul>{nrows}</ul></div>
