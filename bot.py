@@ -2872,7 +2872,7 @@ BOT_EXPLAIN = {
              "Vid 2x säljs hälften så insatsen är hemma; resten får springa tills den tappar 60 % från toppen. "
              "Ett lotteri med regler: de flesta lotter förlorar, en enda stor vinnare kan bära allt.",
     "Bot 8": "Härmar kända memecoin-traders (Cented, Theo, West, Yugi) genom att läsa deras offentliga plånböcker på "
-             "Solana. När de köper för minst 2 SOL köper boten samma mynt för 1,5 % av pengarna; när de säljer säljer den samma "
+             "Solana. När de köper (minst 0,5 SOL) köper boten samma mynt för 1,5 % av pengarna; när de säljer säljer den samma "
              "andel. Kommer alltid in lite efter dem och till sämre pris – det räknas med.",
     "Bot 6": "Läser graferna som en teknisk analytiker varje timme: utbrott med volym, dubbelbotten/-topp, trendstruktur "
              "och RSI-divergens. Stop-loss och vinstmål efter hur mycket myntet svänger. Lär sig: mönster som tjänar pengar live "
@@ -3592,7 +3592,7 @@ COPY_WALLETS = {   # namn: offentlig Solana-plånbok (från KOL-trackers)
     "Yugi": "4TCMpxeevymUtCemwcVozhBLWq8Fikc1pVpfcW9zp66B",
 }
 COPY_STAKE = 0.015           # andel av pengarna per kopierat köp
-COPY_MIN_SOL = 2.0           # kopiera bara köp på minst 2 SOL (deras "riktiga" satsningar)
+COPY_MIN_SOL = 0.5           # kopiera alla riktiga köp (hoppar bara över damm/avgifter under 0,5 SOL)
 COPY_MAX_POS = 30
 COPY_STOP = -0.70
 COPY_MAX_HOURS = 48
@@ -3699,7 +3699,7 @@ def run_copy_watch(minutes=55):
 
     def poll(kol, wallet, now):
         last = st["last_sig"].get(kol)
-        opts = {"limit": 40}
+        opts = {"limit": 25}
         if last:
             opts["until"] = last
         sigs = _rpc("getSignaturesForAddress", [wallet, opts])
@@ -3712,7 +3712,8 @@ def run_copy_watch(minutes=55):
             if s.get("err"):
                 continue
             try:
-                tx = _rpc("getTransaction", [s["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}])
+                tx = _rpc("getTransaction", [s["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}])
+                time.sleep(0.4)
                 sw = parse_swap(tx, wallet)
             except Exception:
                 continue
@@ -3770,7 +3771,7 @@ def run_copy_watch(minutes=55):
         with open(COPY_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:
             json.dump(st, f)
         os.replace(COPY_STATE_FILE + ".tmp", COPY_STATE_FILE)
-        time.sleep(max(1.0, min(15.0, end - time.time())))
+        time.sleep(max(1.0, min(20.0, end - time.time())))
     log(f"Kopieraren: {money(equity())} USDT, {len(st['pos'])} öppna, {len(st['trades'])} försäljningar")
 
 

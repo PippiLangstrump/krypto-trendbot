@@ -24,13 +24,13 @@ jobs:
                   print("KOL", kol, "signaturer", len(sigs), "senaste", sigs[0]["blockTime"] if sigs else None)
                   n = 0
                   for sg in sigs[:15]:
-                      tx = bot._rpc("getTransaction", [sg["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}])
+                      tx = bot._rpc("getTransaction", [sg["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}])
                       sw = bot.parse_swap(tx, w)
                       if sw:
                           n += 1
                           m = bot._token_market(sw[0])
                           print("  SWAP", kol, sw[1], round(sw[2], 3), "SOL", round(sw[3], 2), m[:3] if m else None)
-                      time.sleep(0.3)
+                      time.sleep(0.6)
                   print("  tolkade swappar:", n)
               except Exception as e:
                   print("KOL", kol, "FEL", e)

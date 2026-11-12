@@ -36,6 +36,7 @@ jobs:
           python bot.py trendwatch longshort $M2 & P2=$!
           python bot.py fastwatch $M & P3=$!
           python bot.py gemwatch $M & P4=$!
+          python bot.py copywatch $M & P5=$!
           # uppdatera webbsidan och spara läget var 5:e minut medan botarna kör
           (
             while true; do
@@ -47,7 +48,7 @@ jobs:
               fi
             done
           ) & UPD=$!
-          wait $P1 $P2 $P3 $P4
+          wait $P1 $P2 $P3 $P4 $P5
           kill $UPD || true
           python bot.py fundingonce || echo "Funding-boten misslyckades denna gång"
           python bot.py chartonce || echo "Mönsterläsaren misslyckades denna gång"
