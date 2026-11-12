@@ -2174,6 +2174,7 @@ def write_mail_report(path=None):
         se = datetime.now(ZoneInfo("Europe/Stockholm"))
     except Exception:
         se = datetime.utcnow() + __import__("datetime").timedelta(hours=1)
+    se = se + __import__("datetime").timedelta(minutes=10)   # mejlet skickas strax före hel timme
     lines = [f"## 🕐 Kl {se.strftime('%H')}:00 – {se.strftime('%d/%m')}",
              f"<sub>Låtsaspengar · varje bot startade med {kr(START_CAPITAL * rate)}</sub>", ""]
     for tag, name in (("", "Bot 1 – köper bara"), ("_langkort", "Bot 2 – köper och blankar")):
@@ -2232,22 +2233,11 @@ def write_mail_report(path=None):
         lines.append("")
     except Exception:
         pass
-    try:
-        lines += chart_mail_lines(rate, now_ms)
-    except Exception as e:
-        lines.append(f"Bot 6: kunde inte läsa läget ({e})")
-    try:
-        lines += league_mail_lines(rate, now_ms)
-    except Exception as e:
-        lines.append(f"Bot 5: kunde inte läsa läget ({e})")
-    try:
-        lines += fast_mail_lines(rate, now_ms)
-    except Exception as e:
-        lines.append(f"Bot 4: kunde inte läsa läget ({e})")
-    try:
-        lines += funding_mail_lines(rate, now_ms)
-    except Exception as e:
-        lines.append(f"Bot 3: kunde inte läsa läget ({e})")
+    for fn, label in ((funding_mail_lines, "Bot 3"), (fast_mail_lines, "Bot 4"), (league_mail_lines, "Bot 5"), (chart_mail_lines, "Bot 6")):
+        try:
+            lines += fn(rate, now_ms)
+        except Exception as e:
+            lines.append(f"{label}: kunde inte läsa läget ({e})")
     lines.append(f"<sub>1 dollar = {rate:.2f} kr{'' if live_rate else ' (ungefär)'} · @PippiLangstrump</sub>")
     with open(path or os.path.join(HERE, "MAILRAPPORT.md"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
@@ -2720,7 +2710,7 @@ def league_mail_lines(rate, now_ms):
     verb = "tjänat" if eq >= START_CAPITAL else "förlorat"
     w = ", ".join(f"{k} {v * 100:.0f} %" for k, v in st["weights"].items())
     nxt = fmt_ts(st["last_rebal"] + 7 * 86400000 + 3600000)[:10]
-    return [f"**Bot 5 – lagledaren (fördelar mellan bot 1–4): har {kr(eq * rate)}** – har {verb} {kr(abs(eq - START_CAPITAL) * rate)} totalt ({pct_sv(eq / START_CAPITAL - 1)})  ",
+    return [f"**Bot 5 – lagledaren (fördelar mellan de andra): har {kr(eq * rate)}** – har {verb} {kr(abs(eq - START_CAPITAL) * rate)} totalt ({pct_sv(eq / START_CAPITAL - 1)})  ",
             f"Senaste dygnet: {kr((eq - day_ago) * rate, sign=True)} · Fördelning: {w} · nästa omfördelning {nxt}", ""]
 
 
