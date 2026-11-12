@@ -3400,9 +3400,9 @@ def gem_candidates(now_ms):
                 for pool in d.get("data", []):
                     tid = pool["relationships"]["base_token"]["data"]["id"]
                     toks.setdefault(chain, set()).add(tid.split("_", 1)[1])
-                time.sleep(2.2)
             except Exception as e:
                 log(f"  Myntjägaren: GeckoTerminal {net} sida {page} misslyckades ({e})")
+            time.sleep(3)                      # max ~30 anrop/minut hos GeckoTerminal
     pairs = []
     for chain, addrs in toks.items():
         addrs = sorted(addrs)
