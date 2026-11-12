@@ -2236,7 +2236,7 @@ def write_mail_report(path=None):
         lines.append("")
     except Exception:
         pass
-    for fn, label in ((funding_mail_lines, "Bot 3"), (fast_mail_lines, "Bot 4"), (league_mail_lines, "Bot 5"), (chart_mail_lines, "Bot 6"), (gem_mail_lines, "Bot 7"), (copy_mail_lines, "Bot 8")):
+    for fn, label in ((funding_mail_lines, "Bot 3"), (fast_mail_lines, "Bot 4"), (league_mail_lines, "Bot 5"), (chart_mail_lines, "Bot 6"), (gem_mail_lines, "Bot 7"), (copy_mail_lines, "Bot 8"), (news9_mail_lines, "Bot 9")):
         try:
             lines += fn(rate, now_ms)
         except Exception as e:
@@ -2820,7 +2820,8 @@ ALL_BOTS = [("Bot 1", "Köper bara (trend)", "trend_state.json", "#3fb68b"),
             ("Bot 5", "Lagledaren (fördelar mellan de andra)", "league_state.json", "#c39bff"),
             ("Bot 6", "Mönsterläsaren (läser grafen)", "chart_state.json", "#5fd3d3"),
             ("Bot 7", "Myntjägaren (letar nästa 100x)", "gem_state.json", "#ffb36b"),
-            ("Bot 8", "Kopieraren (härmar kända traders)", "copy_state.json", "#ff7eb6")]
+            ("Bot 8", "Kopieraren (härmar kända traders)", "copy_state.json", "#ff7eb6"),
+            ("Bot 9", "Nyhetsjägaren (okända projekt med nyheter)", "news_state.json", "#9be37a")]
 
 
 def _bot_data(fname, now_ms):
@@ -2907,6 +2908,10 @@ BOT_EXPLAIN = {
     "Bot 8": "Härmar 10 kända memecoin-traders (Cented, Theo, Cupsey, Decu, Pain, Kadenox, Trunoest, Kev, West, Yugi) genom att läsa deras offentliga plånböcker på "
              "Solana. När de köper (minst 0,5 SOL) köper boten samma mynt för 1 % av pengarna; när de säljer säljer den samma "
              "andel. Kommer alltid in lite efter dem och till sämre pris – det räknas med.",
+    "Bot 9": "Läser kryptonyheter från 11 källor varannan minut och letar okända projekt (inte de 50 största) som har något "
+             "stort på gång: börsnotering på Binance/Coinbase/Upbit, finansieringsrunda, lansering, stort samarbete eller ETF. "
+             "Köper direkt efter nyheten om myntet inte redan rusat. Säljer hälften vid +30 %, resten med släpande stopp; "
+             "stopp vid −12 %, säljer direkt vid dålig nyhet. Lär sig vilka sorters nyheter som ger pengar.",
     "Bot 6": "Läser graferna som en teknisk analytiker varje timme: utbrott med volym, dubbelbotten/-topp, trendstruktur "
              "och RSI-divergens. Stop-loss och vinstmål efter hur mycket myntet svänger. Lär sig: mönster som tjänar pengar live "
              "får större insats, mönster som förlorar mindre.",
@@ -2947,6 +2952,8 @@ def _with_open(f, st, trades):
                 fill = exit_price(lp.get(sym, p["avg"]), side)
                 back = p["margin"] * (1 - FEE) + p["qty"] * (fill - p["avg"]) - abs(p["qty"] * fill) * FEE
                 cost = p["margin"]
+            elif f == "news_state.json":
+                side, back, cost, sym = "long", p["qty"] * p["price"] * (1 - NEWS9_COST), p["cost"], p["name"]
             elif f in ("gem_state.json", "copy_state.json"):
                 side = "long"
                 back = p["qty"] * p["price"] * (1 - _gem_cost(p["qty"] * p["price"], p["liq"]))
@@ -3884,6 +3891,239 @@ def copy_mail_lines(rate, now_ms):
             f"Resultat per trader: {who}", ""]
 
 
+# ============================================================================
+# BOT 9: NYHETSJÄGAREN (letar okända projekt med något stort på gång)
+# ============================================================================
+# Läser kryptonyheter från många källor varannan minut. Letar "katalysatorer" för MINDRE
+# projekt (inte topp-50): börsnoteringar (Binance/Coinbase/Upbit...), finansieringsrundor,
+# lanseringar (mainnet), stora samarbeten, ETF-ansökningar. Köper myntet direkt efter
+# nyheten om det inte redan rusat. Säljer hälften vid +30 %, resten med släpande stopp.
+# Dålig nyhet om myntet (hack, stämning...) -> säljer direkt. Lär sig vilka sorters
+# nyheter som faktiskt ger pengar och satsar mer på dem.
+NEWS9_STATE_FILE = os.path.join(HERE, "news_state.json")
+NEWS9_FEEDS = NEWS_FEEDS + ["https://www.theblock.co/rss.xml", "https://cryptoslate.com/feed/",
+                            "https://bitcoinmagazine.com/.rss/full/", "https://u.today/rss",
+                            "https://www.newsbtc.com/feed/", "https://cryptopotato.com/feed/",
+                            "https://beincrypto.com/feed/", "https://coinjournal.net/feed/"]
+NEWS9_CATALYSTS = {
+    "notering": (r"\b(binance|coinbase|upbit|bithumb|robinhood|okx|bybit|kraken|kucoin)\b.{0,60}\b(lists?|listing|to list|will list|adds?|launch(es)? trading)\b"
+                 r"|\b(lists?|listing|adds?)\b.{0,60}\b(binance|coinbase|upbit|bithumb|robinhood|okx|bybit|kraken)\b", 1.0),
+    "finansiering": (r"\braises? \$?\d|\bfunding round\b|\bseries [abc]\b|\bseed round\b|\bsecures? \$\d", 0.6),
+    "etf": (r"\betf\b.{0,40}\b(fil(e|es|ed|ing)|approv|launch)", 0.8),
+    "lansering": (r"\bmainnet\b|\bgoes live\b|\blaunch(es|ed)?\b.{0,30}\b(v2|v3|chain|network|protocol)\b", 0.5),
+    "samarbete": (r"\bpartner(s|ship)? with\b|\bintegrat(es|ion) with\b|\bteams up with\b|\bselected by\b", 0.5),
+}
+NEWS9_STAKE = 0.05
+NEWS9_MAX_POS = 10
+NEWS9_MIN_RANK = 51          # inte de 50 största - vi letar det okända
+NEWS9_MIN_MCAP, NEWS9_MAX_MCAP = 5e6, 2e9
+NEWS9_STOP, NEWS9_TP, NEWS9_TRAIL, NEWS9_MAX_DAYS = -0.12, 0.30, 0.15, 5
+NEWS9_COST = 0.004           # avgift + slippage per köp/sälj (börs, mindre mynt)
+CG = "https://api.coingecko.com/api/v3"
+
+
+def _cg(path):
+    return json.loads(fetch_text(CG + path, timeout=20))
+
+
+def news9_markets():
+    """Topp ~1000 mynt efter värde (rank, namn, symbol, pris) från CoinGecko."""
+    out = []
+    for page in (1, 2, 3, 4):
+        try:
+            out += _cg(f"/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page={page}&price_change_percentage=24h")
+        except Exception as e:
+            log(f"  Nyhetsjägaren: CoinGecko sida {page} misslyckades ({e})")
+        time.sleep(6)
+    return out
+
+
+def news9_match(title, markets):
+    """Hitta vilket (mindre) mynt en rubrik handlar om. Returnerar CoinGecko-raden eller None."""
+    import re
+    low = " " + title.lower() + " "
+    best = None
+    for m in markets:
+        rank = m.get("market_cap_rank") or 99999
+        if rank < NEWS9_MIN_RANK:
+            continue
+        name, sym = (m.get("name") or "").lower(), (m.get("symbol") or "").upper()
+        hit = False
+        if len(name) >= 4 and re.search(r"(?<![a-z0-9])" + re.escape(name) + r"(?![a-z0-9])", low):
+            hit = True
+        elif len(sym) >= 3 and re.search(r"(\(|\$)" + re.escape(sym) + r"\b", title):
+            hit = True
+        if hit and (best is None or rank < (best.get("market_cap_rank") or 99999)):
+            best = m
+    return best
+
+
+def news9_catalyst(title):
+    import re
+    low = title.lower()
+    for kind, (rx, w) in NEWS9_CATALYSTS.items():
+        if re.search(rx, low):
+            return kind, w
+    return None
+
+
+def run_news_watch(minutes=55):
+    st = None
+    if os.path.exists(NEWS9_STATE_FILE):
+        try:
+            with open(NEWS9_STATE_FILE, encoding="utf-8") as f:
+                st = json.load(f)
+        except Exception:
+            st = None
+    if not st:
+        st = {"start_ms": int(time.time() * 1000), "cash": START_CAPITAL, "pos": {}, "trades": [], "equity": [],
+              "seen": [], "markets_ts": 0, "score": {}, "log": []}
+        log("Nyhetsjägaren startar med 10 000 låtsas-USDT")
+    first_run = not st["seen"]
+    markets = []
+    end = time.time() + minutes * 60
+    last_news = last_px = 0
+
+    def value(p):
+        return p["qty"] * p["price"] * (1 - NEWS9_COST)
+
+    def equity():
+        return st["cash"] + sum(value(p) for p in st["pos"].values())
+
+    def sell(cid, frac, now, why):
+        p = st["pos"][cid]
+        got = value(p) * frac
+        cost = p["cost"] * frac
+        st["cash"] += got
+        st["trades"].append({"symbol": p["name"], "side": "long", "ret": got / cost - 1, "pnl": got - cost, "entry_ts": p["ts"],
+                             "exit_ts": now, "reason": why, "cost": cost, "kind": p["kind"], "news": p["news"]})
+        st["trades"] = st["trades"][-5000:]
+        p["qty"] *= (1 - frac); p["cost"] -= cost
+        if frac >= 0.999:
+            del st["pos"][cid]
+            sc = st["score"].setdefault(p["kind"], [])
+            sc.append(round(got / cost - 1, 4) if cost else 0)
+            del sc[:-10]
+
+    def size_factor(kind):
+        sc = st["score"].get(kind) or []
+        if len(sc) < 3:
+            return 1.0
+        return max(0.5, min(1.5, 1 + 5 * sum(sc) / len(sc)))
+
+    while time.time() < end:
+        now = int(time.time() * 1000)
+        if not markets or now - st.get("markets_ts", 0) > 30 * 60000:
+            m = news9_markets()
+            if m:
+                markets = m
+                st["markets_ts"] = now
+        if time.time() - last_news >= 120 and markets:
+            last_news = time.time()
+            heads = []
+            for url in NEWS9_FEEDS:
+                try:
+                    import xml.etree.ElementTree as ET
+                    root = ET.fromstring(fetch_text(url))
+                    for it in root.iter("item"):
+                        t = (it.findtext("title") or "").strip()
+                        if t:
+                            heads.append({"title": t, "link": (it.findtext("link") or "").strip(), "src": url.split("/")[2]})
+                except Exception:
+                    continue
+            seen = set(st["seen"])
+            for h in heads:
+                key = h["title"][:120]
+                if key in seen:
+                    continue
+                st["seen"].append(key); seen.add(key)
+                if first_run:
+                    continue                          # gamla nyheter vid första start räknas inte
+                low = h["title"].lower()
+                m = news9_match(h["title"], markets)
+                if not m:
+                    continue
+                cid = m["id"]
+                # dålig nyhet om ett mynt vi äger -> sälj
+                if cid in st["pos"] and any(w in low for w in BAD_WORDS):
+                    sell(cid, 1.0, now, "dålig nyhet: " + h["title"][:80])
+                    continue
+                cat = news9_catalyst(h["title"])
+                if not cat or any(w in low for w in BAD_WORDS) or cid in st["pos"] or len(st["pos"]) >= NEWS9_MAX_POS:
+                    continue
+                kind, w = cat
+                mcap = m.get("market_cap") or 0
+                ch24 = m.get("price_change_percentage_24h") or 0
+                if not (NEWS9_MIN_MCAP <= mcap <= NEWS9_MAX_MCAP) or ch24 > 40 or not m.get("current_price"):
+                    continue
+                try:
+                    price = float(_cg(f"/simple/price?ids={cid}&vs_currencies=usd")[cid]["usd"])
+                except Exception:
+                    price = float(m["current_price"])
+                stake = min(equity() * NEWS9_STAKE * w * size_factor(kind), st["cash"])
+                if stake < MIN_TRADE_USDT:
+                    continue
+                st["cash"] -= stake
+                st["pos"][cid] = {"name": f"{m['symbol'].upper()} ({kind})", "kind": kind, "entry": price, "price": price,
+                                  "qty": stake * (1 - NEWS9_COST) / price, "cost": stake, "ts": now, "peak": 1.0,
+                                  "news": h["title"][:160], "link": h["link"], "rank": m.get("market_cap_rank")}
+                st["log"].append([now, kind, m["symbol"].upper(), h["title"][:160]])
+                st["log"] = st["log"][-200:]
+                log(f"  Nyhetsjägaren köper {m['symbol'].upper()} (rank {m.get('market_cap_rank')}, {kind}): {h['title'][:90]}")
+            st["seen"] = st["seen"][-3000:]
+            first_run = False
+        if time.time() - last_px >= 60 and st["pos"]:
+            last_px = time.time()
+            try:
+                px = _cg(f"/simple/price?ids={','.join(st['pos'])}&vs_currencies=usd")
+            except Exception:
+                px = {}
+            for cid, p in list(st["pos"].items()):
+                if cid not in px:
+                    continue
+                p["price"] = float(px[cid]["usd"])
+                x = p["price"] / p["entry"]
+                p["peak"] = max(p.get("peak", 1.0), x)
+                if not p.get("half") and x - 1 >= NEWS9_TP:
+                    sell(cid, 0.5, now, "+30 % – hälften såld")
+                    st["pos"][cid]["half"] = True
+                elif p.get("half") and x <= p["peak"] * (1 - NEWS9_TRAIL):
+                    sell(cid, 1.0, now, f"släpande stopp ({(p['peak'] - 1) * 100:.0f} % som mest)")
+                elif x - 1 <= NEWS9_STOP:
+                    sell(cid, 1.0, now, "stopp −12 %")
+                elif now - p["ts"] > NEWS9_MAX_DAYS * 86400000:
+                    sell(cid, 1.0, now, "5 dagar – nyheten är gammal")
+        if not st["equity"] or now - st["equity"][-1][0] >= 60000:
+            st["equity"].append([now, round(equity(), 2)])
+            st["equity"] = st["equity"][-6000:]
+            st["last_prices"] = {k: p["price"] for k, p in st["pos"].items()}
+            with open(NEWS9_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:
+                json.dump(st, f)
+            os.replace(NEWS9_STATE_FILE + ".tmp", NEWS9_STATE_FILE)
+        time.sleep(max(0.0, min(5.0, end - time.time())))
+    st["equity"].append([int(time.time() * 1000), round(equity(), 2)])
+    with open(NEWS9_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(st, f)
+    os.replace(NEWS9_STATE_FILE + ".tmp", NEWS9_STATE_FILE)
+    log(f"Nyhetsjägaren: {money(equity())} USDT, {len(st['pos'])} öppna, {len(st['trades'])} försäljningar")
+
+
+def news9_mail_lines(rate, now_ms):
+    if not os.path.exists(NEWS9_STATE_FILE):
+        return []
+    with open(NEWS9_STATE_FILE, encoding="utf-8") as f:
+        st = json.load(f)
+    eqh = st.get("equity") or [[now_ms, START_CAPITAL]]
+    eq = eqh[-1][1]
+    d24 = next((e for t, e in reversed(eqh) if t <= now_ms - 86000 * 1000), eqh[0][1])
+    verb = "tjänat" if eq >= START_CAPITAL else "förlorat"
+    opens = ", ".join(p["name"] for p in st["pos"].values()) or "inga – väntar på rätt nyhet"
+    last = st.get("log", [])[-1:] 
+    return [f"**Bot 9 – nyhetsjägaren: har {kr(eq * rate)}** – har {verb} {kr(abs(eq - START_CAPITAL) * rate)} totalt ({pct_sv(eq / START_CAPITAL - 1)})  ",
+            f"Senaste dygnet: {kr((eq - d24) * rate, sign=True)} · öppna: {opens}  ",
+            f"Senaste köpnyhet: {last[0][3] if last else 'ingen än'}", ""]
+
+
 def run_trend_live(mode="long", once=False, watch_minutes=0):
     """Kör trendmodellen live med papperspengar. Kollar priser varje minut,
     ombalanserar en gång per dygn (när dagsljuset stänger, kl 01:00 svensk vintertid)."""
@@ -4195,6 +4435,8 @@ if __name__ == "__main__":
             run_self_improve(fake=len(args) > 1 and args[1] == "demo")
         elif mode == "trendwatch":  # molnet: en körning + bevaka varje sekund i N minuter
             run_trend_live(args[1], once=True, watch_minutes=float(args[2]) if len(args) > 2 else 55)
+        elif mode == "newswatch":
+            run_news_watch(float(args[1]) if len(args) > 1 else 55)
         elif mode == "copywatch":
             run_copy_watch(float(args[1]) if len(args) > 1 else 55)
         elif mode == "gemwatch":

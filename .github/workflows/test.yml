@@ -18,15 +18,21 @@ jobs:
       - run: |
           python - <<'PY'
           import bot, time, json
-          calls = [0]
-          orig = bot._rpc
-          def counting(m, p):
-              calls[0] += 1
-              return orig(m, p)
-          bot._rpc = counting
-          bot.COPY_STATE_FILE = "/tmp/copy.json"
-          t = time.time()
-          bot.run_copy_watch(3)
-          st = json.load(open("/tmp/copy.json"))
-          print("RESULTAT anrop", calls[0], "på", round(time.time() - t), "s, per plånbok/s", round(calls[0] / 10 / (time.time() - t), 2), "köp", len(st["pos"]), [p["name"] for p in st["pos"].values()], "sett", st["seen_kol"])
+          import xml.etree.ElementTree as ET
+          mk = bot.news9_markets()
+          print("MARKETS", len(mk))
+          n = 0
+          for url in bot.NEWS9_FEEDS:
+              try:
+                  root = ET.fromstring(bot.fetch_text(url))
+                  items = [(it.findtext("title") or "").strip() for it in root.iter("item")]
+                  print("FEED", url.split("/")[2], len(items))
+              except Exception as e:
+                  print("FEED", url.split("/")[2], "FEL", str(e)[:60]); continue
+              for t_ in items:
+                  m = bot.news9_match(t_, mk); c = bot.news9_catalyst(t_)
+                  if m and c:
+                      n += 1
+                      print("  TRÄFF", c[0], m["symbol"].upper(), m.get("market_cap_rank"), round((m.get("market_cap") or 0) / 1e6), "M$", round(m.get("price_change_percentage_24h") or 0, 1), "%", "|", t_[:100])
+          print("TRÄFFAR", n)
           PY
