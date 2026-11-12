@@ -49,6 +49,7 @@ jobs:
           wait $P1 $P2 $P3
           kill $UPD || true
           python bot.py fundingonce || echo "Funding-boten misslyckades denna gång"
+          python bot.py chartonce || echo "Mönsterläsaren misslyckades denna gång"
           python bot.py league || echo "Lagledaren misslyckades denna gång"
           python bot.py webbsida || echo "Webbsidan misslyckades denna gång"
           python bot.py mailrapport

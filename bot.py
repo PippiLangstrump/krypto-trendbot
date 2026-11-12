@@ -2233,6 +2233,10 @@ def write_mail_report(path=None):
     except Exception:
         pass
     try:
+        lines += chart_mail_lines(rate, now_ms)
+    except Exception as e:
+        lines.append(f"Bot 6: kunde inte läsa läget ({e})")
+    try:
         lines += league_mail_lines(rate, now_ms)
     except Exception as e:
         lines.append(f"Bot 5: kunde inte läsa läget ({e})")
@@ -2640,7 +2644,7 @@ def fast_mail_lines(rate, now_ms):
 # ============================================================================
 LEAGUE_FILE = os.path.join(HERE, "league_state.json")
 LEAGUE_MEMBERS = {"Bot 1": "trend_state.json", "Bot 2": "trend_state_langkort.json",
-                  "Bot 3": "funding_state.json", "Bot 4": "fast_state.json"}
+                  "Bot 3": "funding_state.json", "Bot 4": "fast_state.json", "Bot 6": "chart_state.json"}
 LEAGUE_MIN = 0.10
 
 
@@ -2660,6 +2664,9 @@ def run_league():
         with open(LEAGUE_FILE, encoding="utf-8") as f:
             st = json.load(f)
     cur = {n: _last_equity(f)[0] for n, f in LEAGUE_MEMBERS.items()}
+    if st:
+        for k in LEAGUE_MEMBERS:
+            st["weights"].setdefault(k, 0.0)    # ny bot får pengar vid nästa omfördelning
     if not st:
         n = len(LEAGUE_MEMBERS)
         st = {"start_ms": now, "equity": [[now, START_CAPITAL]], "weights": {k: 1 / n for k in LEAGUE_MEMBERS},
@@ -2724,7 +2731,8 @@ ALL_BOTS = [("Bot 1", "Köper bara (trend)", "trend_state.json", "#3fb68b"),
             ("Bot 2", "Köper och blankar (trend)", "trend_state_langkort.json", "#7cb7ff"),
             ("Bot 3", "Samlar funding (neutral)", "funding_state.json", "#e8c96a"),
             ("Bot 4", "Snabbhandlaren (experiment)", "fast_state.json", "#f08a84"),
-            ("Bot 5", "Lagledaren (fördelar 1–4)", "league_state.json", "#c39bff")]
+            ("Bot 5", "Lagledaren (fördelar mellan de andra)", "league_state.json", "#c39bff"),
+            ("Bot 6", "Mönsterläsaren (läser grafen)", "chart_state.json", "#5fd3d3")]
 
 
 def _bot_data(fname, now_ms):
@@ -2787,7 +2795,10 @@ BOT_EXPLAIN = {
              "hävstångstraders betalar var 8:e timme (kl 01, 09, 17). Små men jämna intäkter.",
     "Bot 4": "Experiment som handlar hela tiden: hoppar på mynt som rört sig mer än 0,3 % på 5 minuter och säljer vid +0,5 %, "
              "−0,3 % eller efter 15 minuter. Visar hur mycket avgifterna kostar när man handlar ofta.",
-    "Bot 5": "Handlar inte själv. Fördelar sina pengar mellan Bot 1–4 och flyttar varje vecka mer pengar till de botar som "
+    "Bot 6": "Läser graferna som en teknisk analytiker varje timme: utbrott med volym, dubbelbotten/-topp, trendstruktur "
+             "och RSI-divergens. Stop-loss och vinstmål efter hur mycket myntet svänger. Lär sig: mönster som tjänar pengar live "
+             "får större insats, mönster som förlorar mindre.",
+    "Bot 5": "Handlar inte själv. Fördelar sina pengar mellan de andra botarna och flyttar varje vecka mer pengar till de botar som "
              "tjänat mest live senaste veckan (minst 10 % kvar i varje).",
 }
 
@@ -2878,6 +2889,210 @@ h1{{font-size:22px;margin:4px 0}} h2{{font-size:16px;color:#bbb;margin:22px 0 8p
 </body></html>"""
     with open(os.path.join(HERE, "docs", "index.html"), "w", encoding="utf-8") as f:
         f.write(html)
+
+
+# ============================================================================
+# BOT 6: MÖNSTERLÄSAREN - läser grafen (1h-ljus) som en teknisk analytiker
+# ============================================================================
+CHART_STATE_FILE = os.path.join(HERE, "chart_state.json")
+CHART_PATTERNS = {"utbrott": "Utbrott med volym", "dubbel": "Dubbelbotten/-topp",
+                  "struktur": "Trendstruktur + rekyl", "divergens": "RSI-divergens"}
+CHART_SLOTS = 4
+CHART_BASE = 0.20          # 20 % av kassan per affär (justeras efter mönstrets betyg)
+CHART_MAX_HOURS = 48
+
+
+def _atr(b, n=14):
+    tr = [max(b.h[i] - b.l[i], abs(b.h[i] - b.c[i - 1]), abs(b.l[i] - b.c[i - 1])) for i in range(1, len(b))]
+    return sum(tr[-n:]) / n if len(tr) >= n else None
+
+
+def _swings(vals, k=3, low=True):
+    out = []
+    for i in range(k, len(vals) - k):
+        w = vals[i - k:i + k + 1]
+        if (low and vals[i] == min(w)) or (not low and vals[i] == max(w)):
+            out.append(i)
+    return out
+
+
+def detect_patterns(b):
+    """Returnerar lista med (mönster, riktning +1/-1) för senaste stängda ljuset."""
+    n = len(b)
+    if n < 120:
+        return []
+    c, h, l, v = b.c, b.h, b.l, b.v
+    i = n - 1
+    found = []
+    # 1) utbrott ur 48h-intervall med volym
+    hh, ll = max(h[i - 48:i]), min(l[i - 48:i])
+    vavg = sum(v[i - 48:i]) / 48 or 1
+    if c[i] > hh and v[i] > 1.5 * vavg:
+        found.append(("utbrott", 1))
+    elif c[i] < ll and v[i] > 1.5 * vavg:
+        found.append(("utbrott", -1))
+    # 2) dubbelbotten / dubbeltopp (senaste 80 ljus)
+    lows = [j for j in _swings(l[:i], 3, True) if j > i - 80]
+    highs = [j for j in _swings(h[:i], 3, False) if j > i - 80]
+    if len(lows) >= 2:
+        a, b2 = lows[-2], lows[-1]
+        if b2 - a >= 10 and abs(l[a] / l[b2] - 1) < 0.012:
+            neck = max(h[a:b2 + 1])
+            if c[i] > neck >= c[i - 1]:
+                found.append(("dubbel", 1))
+    if len(highs) >= 2:
+        a, b2 = highs[-2], highs[-1]
+        if b2 - a >= 10 and abs(h[a] / h[b2] - 1) < 0.012:
+            neck = min(l[a:b2 + 1])
+            if c[i] < neck <= c[i - 1]:
+                found.append(("dubbel", -1))
+    # 3) trendstruktur: högre toppar+bottnar och rekyl till EMA20
+    e20 = ema(c, 20)
+    if len(highs) >= 3 and len(lows) >= 3:
+        up = h[highs[-1]] > h[highs[-2]] > h[highs[-3]] and l[lows[-1]] > l[lows[-2]] > l[lows[-3]]
+        dn = h[highs[-1]] < h[highs[-2]] < h[highs[-3]] and l[lows[-1]] < l[lows[-2]] < l[lows[-3]]
+        if up and l[i] <= e20[i] < c[i]:
+            found.append(("struktur", 1))
+        if dn and h[i] >= e20[i] > c[i]:
+            found.append(("struktur", -1))
+    # 4) RSI-divergens
+    r = rsi(c, 14)
+    if len(lows) >= 2:
+        a, b2 = lows[-2], lows[-1]
+        if l[b2] < l[a] and r[b2] > r[a] and r[b2] < 35 and i - b2 <= 3 and c[i] > c[i - 1]:
+            found.append(("divergens", 1))
+    if len(highs) >= 2:
+        a, b2 = highs[-2], highs[-1]
+        if h[b2] > h[a] and r[b2] < r[a] and r[b2] > 65 and i - b2 <= 3 and c[i] < c[i - 1]:
+            found.append(("divergens", -1))
+    return found
+
+
+def run_chart_once():
+    set_timeframe("1h")
+    now = int(time.time() * 1000)
+    st = None
+    if os.path.exists(CHART_STATE_FILE):
+        try:
+            with open(CHART_STATE_FILE, encoding="utf-8") as f:
+                st = json.load(f)
+        except Exception:
+            st = None
+    if not st:
+        st = {"start_ms": now, "cash": START_CAPITAL, "pos": {}, "trades": [], "equity": [], "last_bar": {},
+              "score": {k: 0.0 for k in CHART_PATTERNS}, "count": {k: 0 for k in CHART_PATTERNS}}
+        log("Mönsterläsaren startar med 10 000 låtsas-USDT")
+    bars, prices = {}, {}
+    for sym in SYMBOLS:
+        try:
+            b = fetch_klines(sym, 200)
+            if b.t[-1] + BAR_MS > now:      # släng ljuset som inte stängt än
+                prices[sym] = b.c[-1]
+                b = b.slice(0, len(b) - 1)
+            bars[sym] = b
+            prices.setdefault(sym, b.c[-1])
+        except Exception as e:
+            log(f"  {sym}: kunde inte hämtas ({e})")
+
+    def close(sym, px, why):
+        p = st["pos"].pop(sym)
+        x = exit_price(px, p["side"])
+        val = trade_value(p["cost"], p["entry"], x, p["side"], (now - p["ts"]) / 3.6e6)
+        st["cash"] += val
+        ret = val / p["cost"] - 1
+        st["trades"].append({"symbol": sym, "side": p["side"], "ret": ret, "pnl": val - p["cost"], "entry_ts": p["ts"],
+                             "exit_ts": now, "reason": why, "pattern": p["pattern"]})
+        st["trades"] = st["trades"][-3000:]
+        # lär sig: mönstrets betyg = glidande snitt av resultaten
+        k = p["pattern"]
+        st["score"][k] = 0.8 * st["score"].get(k, 0.0) + 0.2 * ret
+        st["count"][k] = st["count"].get(k, 0) + 1
+        log(f"  Mönster: stänger {sym} ({CHART_PATTERNS[k]}, {why}) {pct(ret)}")
+
+    # 1) sälj-regler: kolla varje ljus sedan förra körningen mot stopp/mål
+    for sym, p in list(st["pos"].items()):
+        b = bars.get(sym)
+        if not b:
+            continue
+        for j in range(len(b)):
+            if b.t[j] <= p.get("checked", p["ts"]):
+                continue
+            hi, lo = b.h[j], b.l[j]
+            if p["side"] == "long":
+                if lo <= p["stop"]:
+                    close(sym, p["stop"], "stopp"); break
+                if hi >= p["target"]:
+                    close(sym, p["target"], "vinstmål"); break
+            else:
+                if hi >= p["stop"]:
+                    close(sym, p["stop"], "stopp"); break
+                if lo <= p["target"]:
+                    close(sym, p["target"], "vinstmål"); break
+            p["checked"] = b.t[j]
+        if sym in st["pos"] and now - st["pos"][sym]["ts"] > CHART_MAX_HOURS * 3.6e6:
+            close(sym, prices[sym], "tid")
+    # 2) leta nya mönster på nya ljus
+    eq = st["cash"] + sum(mark_value(p["cost"], p["entry"], prices.get(s, p["entry"]), p["side"]) for s, p in st["pos"].items())
+    for sym, b in bars.items():
+        if len(b) == 0 or st["last_bar"].get(sym) == b.t[-1]:
+            continue
+        st["last_bar"][sym] = b.t[-1]
+        if sym in st["pos"] or len(st["pos"]) >= CHART_SLOTS:
+            continue
+        pats = detect_patterns(b)
+        if not pats:
+            continue
+        # välj mönstret med bäst betyg
+        k, d = max(pats, key=lambda x: st["score"].get(x[0], 0.0))
+        mult = max(0.25, min(2.0, math.exp(40 * st["score"].get(k, 0.0))))
+        cost = min(eq * CHART_BASE * mult, st["cash"])
+        atr = _atr(b)
+        if cost < MIN_TRADE_USDT or not atr:
+            continue
+        side = "long" if d > 0 else "short"
+        e = entry_price(prices[sym], side)
+        stop = e - 1.5 * atr if side == "long" else e + 1.5 * atr
+        target = e + 3 * atr if side == "long" else e - 3 * atr
+        st["cash"] -= cost
+        st["pos"][sym] = {"side": side, "entry": e, "cost": cost, "ts": now, "stop": stop, "target": target,
+                          "pattern": k, "checked": b.t[-1]}
+        log(f"  Mönster: {CHART_PATTERNS[k]} i {sym} -> {'köper' if side == 'long' else 'blankar'} för {money(cost)} USDT")
+    eq = st["cash"] + sum(mark_value(p["cost"], p["entry"], prices.get(s, p["entry"]), p["side"]) for s, p in st["pos"].items())
+    st["equity"].append([now, round(eq, 2)])
+    st["equity"] = st["equity"][-4000:]
+    st["last_prices"] = prices
+    with open(CHART_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(st, f)
+    os.replace(CHART_STATE_FILE + ".tmp", CHART_STATE_FILE)
+    log(f"Mönsterläsaren: {money(eq)} USDT, {len(st['pos'])} öppna, {len(st['trades'])} avslutade")
+    set_timeframe(TIMEFRAME)
+
+
+def chart_mail_lines(rate, now_ms):
+    if not os.path.exists(CHART_STATE_FILE):
+        return []
+    with open(CHART_STATE_FILE, encoding="utf-8") as f:
+        st = json.load(f)
+    eqh = st.get("equity") or [[now_ms, START_CAPITAL]]
+    eq = eqh[-1][1]
+    d24 = next((e for t, e in reversed(eqh) if t <= now_ms - 86000 * 1000), eqh[0][1])
+    tr = st["trades"]
+    best = max(tr, key=lambda t: t["pnl"]) if tr else None
+    worst = min(tr, key=lambda t: t["pnl"]) if tr else None
+
+    def t_txt(t):
+        if not t:
+            return "inga än"
+        return f"{t['symbol'].replace('USDT', '')} ({CHART_PATTERNS[t['pattern']]}) {pct_sv(t['ret'])} = {kr(t['pnl'] * rate, sign=True)}"
+    verb = "tjänat" if eq >= START_CAPITAL else "förlorat"
+    grades = ", ".join(f"{CHART_PATTERNS[k]} {pct_sv(v)} ({st['count'].get(k, 0)} st)" for k, v in st["score"].items() if st["count"].get(k, 0))
+    opens = ", ".join(f"{s.replace('USDT', '')} ({'köpt' if p['side'] == 'long' else 'blankat'}, {CHART_PATTERNS[p['pattern']]})" for s, p in st["pos"].items())
+    return [f"**Bot 6 – mönsterläsaren: har {kr(eq * rate)}** – har {verb} {kr(abs(eq - START_CAPITAL) * rate)} totalt ({pct_sv(eq / START_CAPITAL - 1)})  ",
+            f"Senaste dygnet: {kr((eq - d24) * rate, sign=True)} · öppna: {len(st['pos'])} · avslutade: {len(tr)}  ",
+            f"Bästa affär: {t_txt(best)}  ",
+            f"Sämsta affär: {t_txt(worst)}  ",
+            f"Öppna: {opens or 'inga – letar mönster'}  ",
+            f"Mönstrens betyg (lärt sig hittills): {grades or 'inga avslutade affärer än'}", ""]
 
 
 def run_trend_live(mode="long", once=False, watch_minutes=0):
@@ -3197,6 +3412,8 @@ if __name__ == "__main__":
             write_morning_report()
         elif mode == "webbsida":
             write_dashboard()
+        elif mode == "chartonce":
+            run_chart_once()
         elif mode == "league":
             run_league()
         elif mode == "fundingonce":
