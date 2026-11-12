@@ -2500,15 +2500,59 @@ def funding_mail_lines(rate, now_ms):
 
 
 # ============================================================================
-# BOT 4: SNABBHANDLAREN (experiment - handlar hela tiden på korta rörelser)
+# BOT 4: DAYTRADERN (handlar många gånger per dag som en riktig daytrader)
 # ============================================================================
-# Varje minut: har ett mynt rört sig mer än 0,3 % senaste 5 minuterna -> hoppa på
-# (köp om upp, blanka om ner). Varje sekund: sälj vid +0,5 % (vinst), -0,3 % (stopp)
-# eller efter 15 minuter. Max 4 affärer samtidigt, 25 % av kassan var.
+# Bygger 1-minutsgrafer av sekundpriserna. Handlar bara MED trenden (snitt 20 min över
+# snitt 60 min): köper på rekyler och utbrott i upptrend, blankar i nedtrend.
+# Insats efter risk: varje affär riskerar 0,75 % av pengarna. Stopp efter hur mycket
+# myntet svänger (0,5-2 %). Inget fast vinstmål: vid +1x risk flyttas stoppet till
+# break-even, sedan följer ett släpande stopp efter så vinnarna får springa.
+# Proffsregler: max 5 affärer samtidigt, 30 min paus i ett mynt efter förlust,
+# slutar för dagen om dagen gått -3 %. Lär sig: mynt/riktningar som förlorar får halv insats.
 FAST_STATE_FILE = os.path.join(HERE, "fast_state.json")
-FAST_TRIGGER = 0.003
-FAST_TP, FAST_SL, FAST_MAX_MIN = 0.005, 0.003, 15
-FAST_SLOTS = 4
+FAST_SLOTS = 5
+FAST_RISK = 0.0075           # andel av pengarna som riskeras per affär
+FAST_MAX_POS = 0.30          # max andel av pengarna i en affär
+FAST_STOP_MIN, FAST_STOP_MAX = 0.005, 0.02
+FAST_MAX_HOURS = 6
+FAST_COOLDOWN_MIN = 30
+FAST_DAY_LOSS = 0.03
+FAST_MEM = 240               # minuter historik per mynt
+
+
+def _ema(vals, n):
+    k = 2 / (n + 1)
+    e = vals[0]
+    for v in vals[1:]:
+        e = v * k + e * (1 - k)
+    return e
+
+
+def fast_signal(closes):
+    """(sida, stopp, varför) eller None. closes = minutpriser, äldst först."""
+    if len(closes) < 61:
+        return None
+    rets = [closes[i] / closes[i - 1] - 1 for i in range(len(closes) - 60, len(closes))]
+    m = sum(rets) / len(rets)
+    vol = (sum((r - m) ** 2 for r in rets) / len(rets)) ** 0.5
+    stop = min(FAST_STOP_MAX, max(FAST_STOP_MIN, vol * 30 ** 0.5 * 1.5))
+    fast, slow = _ema(closes[-60:], 20), _ema(closes[-120:], 60)
+    p, prev = closes[-1], closes[-2]
+    hi30, lo30 = max(closes[-31:-1]), min(closes[-31:-1])
+    trend = fast / slow - 1
+    if abs(trend) < 0.0015:                  # ingen tydlig trend -> sitt still
+        return None
+    if trend > 0 and p > slow:
+        if p > hi30 and p > prev:
+            return "long", stop, "utbrott i upptrend"
+        if abs(p / fast - 1) < 0.0015 and p > prev and min(closes[-6:]) < fast:
+            return "long", stop, "rekyl i upptrend"
+    if trend < 0 and p < slow:
+        if p < lo30 and p < prev:
+            return "short", stop, "utbrott i nedtrend"
+        if abs(p / fast - 1) < 0.0015 and p < prev and max(closes[-6:]) > fast:
+            return "short", stop, "rekyl i nedtrend"
+    return None
 
 
 def run_fast_watch(minutes=55):
@@ -2521,7 +2565,10 @@ def run_fast_watch(minutes=55):
             st = None
     if not st:
         st = {"start_ms": int(time.time() * 1000), "cash": START_CAPITAL, "pos": {}, "trades": [], "equity": [], "mins": {}}
-        log("Snabbhandlaren startar med 10 000 låtsas-USDT")
+        log("Daytradern startar med 10 000 låtsas-USDT")
+    st.setdefault("v2_from", int(time.time() * 1000))
+    st.setdefault("cooldown", {})
+    st.setdefault("day", {})
     prices = {}
     end = time.time() + minutes * 60
     last_min, polls, fails, last_save = None, 0, 0, time.time()
@@ -2538,8 +2585,18 @@ def run_fast_watch(minutes=55):
         val = trade_value(p["cost"], p["entry"], x, p["side"], (now - p["ts"]) / 3.6e6)
         st["cash"] += val
         st["trades"].append({"symbol": sym, "side": p["side"], "ret": val / p["cost"] - 1, "pnl": val - p["cost"],
-                             "entry_ts": p["ts"], "exit_ts": now, "reason": why})
+                             "entry_ts": p["ts"], "exit_ts": now, "reason": why, "setup": p.get("why", "")})
         st["trades"] = st["trades"][-5000:]
+        if val < p["cost"]:
+            st["cooldown"][sym] = now + FAST_COOLDOWN_MIN * 60000
+
+    def size_factor(sym, side):
+        """Lär sig: förlorar ett mynt+riktning på sina senaste 8 affärer -> halv insats."""
+        recent = [t for t in st["trades"] if t["symbol"] == sym and t["side"] == side
+                  and t["exit_ts"] >= st["v2_from"]][-8:]
+        if len(recent) >= 4 and sum(t["pnl"] for t in recent) < 0:
+            return 0.5
+        return 1.0
 
     while time.time() < end:
         t1 = time.time()
@@ -2556,37 +2613,55 @@ def run_fast_watch(minutes=55):
             cur = prices.get(sym)
             if cur is None:
                 continue
+            stop = p.get("stop", 0.003)
             r = (cur / p["entry"] - 1) * (1 if p["side"] == "long" else -1)
-            if r >= FAST_TP:
-                close(sym, cur, now, "vinst")
-            elif r <= -FAST_SL:
-                close(sym, cur, now, "stopp")
-            elif now - p["ts"] >= FAST_MAX_MIN * 60000:
+            p["peak"] = max(p.get("peak", 0.0), r)
+            if p["peak"] >= 2 * stop:
+                floor = p["peak"] - 0.75 * stop          # släpande stopp
+            elif p["peak"] >= stop:
+                floor = 0.0025                           # break-even + avgifter
+            else:
+                floor = -stop
+            if r <= floor:
+                close(sym, cur, now, "stopp" if floor < 0 else "vinstlås")
+            elif now - p["ts"] >= FAST_MAX_HOURS * 3600000:
                 close(sym, cur, now, "tid")
-        # ny minut: spara priser och leta nya affärer
+        # ny minut: spara minutpriser, kolla trender och leta nya affärer
         minute = now // 60000
         if minute != last_min:
             last_min = minute
             for sym, pr in prices.items():
                 arr = st["mins"].setdefault(sym, [])
+                if arr and now - arr[-1][0] > 10 * 60000:
+                    arr.clear()                          # för stort glapp -> börja om
                 arr.append([now, pr])
-                del arr[:-30]
+                del arr[:-FAST_MEM]
             eq = equity()
             st["equity"].append([now, round(eq, 2)])
             st["equity"] = st["equity"][-6000:]
+            today = datetime.now().strftime("%Y-%m-%d")
+            if st["day"].get("date") != today:
+                st["day"] = {"date": today, "start_eq": eq}
+            day_ok = eq >= st["day"]["start_eq"] * (1 - FAST_DAY_LOSS)
             for sym, arr in st["mins"].items():
-                if sym in st["pos"] or len(st["pos"]) >= FAST_SLOTS or len(arr) < 6:
+                closes = [x[1] for x in arr]
+                sig = fast_signal(closes) if len(closes) >= 121 else None
+                p = st["pos"].get(sym)
+                # trenden vänt mot en öppen affär -> ut
+                if p and sig and sig[0] != p["side"]:
+                    close(sym, prices[sym], now, "trenden vände")
+                    p = None
+                if p or not sig or not day_ok or len(st["pos"]) >= FAST_SLOTS:
                     continue
-                if now - arr[-6][0] > 7 * 60000:      # för gamla priser (glapp mellan körningar)
+                if st["cooldown"].get(sym, 0) > now:
                     continue
-                move = arr[-1][1] / arr[-6][1] - 1
-                if abs(move) >= FAST_TRIGGER:
-                    side = "long" if move > 0 else "short"
-                    cost = min(eq / FAST_SLOTS, st["cash"])
-                    if cost < MIN_TRADE_USDT:
-                        continue
-                    st["cash"] -= cost
-                    st["pos"][sym] = {"side": side, "entry": entry_price(prices[sym], side), "cost": cost, "ts": now}
+                side, stop, why = sig
+                cost = min(eq * FAST_RISK / stop * size_factor(sym, side), eq * FAST_MAX_POS, st["cash"])
+                if cost < MIN_TRADE_USDT:
+                    continue
+                st["cash"] -= cost
+                st["pos"][sym] = {"side": side, "entry": entry_price(prices[sym], side), "cost": cost, "ts": now,
+                                  "stop": stop, "peak": 0.0, "why": why}
         if time.time() - last_save > 120:
             with open(FAST_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:
                 json.dump(st, f)
@@ -2599,7 +2674,7 @@ def run_fast_watch(minutes=55):
         json.dump(st, f)
     os.replace(FAST_STATE_FILE + ".tmp", FAST_STATE_FILE)
     tr = st["trades"]
-    log(f"Snabbhandlaren: {money(equity())} USDT, {len(tr)} affärer totalt, {len(st['pos'])} öppna")
+    log(f"Daytradern: {money(equity())} USDT, {len(tr)} affärer totalt, {len(st['pos'])} öppna")
 
 
 def fast_mail_lines(rate, now_ms):
@@ -2625,7 +2700,7 @@ def fast_mail_lines(rate, now_ms):
         what = "köpt" if t["side"] == "long" else "blankat"
         return f"{t['symbol'].replace('USDT', '')} ({what}) {pct_sv(t['ret'])} = {kr(t['pnl'] * rate, sign=True)}"
     verb = "tjänat" if eq >= START_CAPITAL else "förlorat"
-    return [f"**Bot 4 – snabbhandlaren (experiment): har {kr(eq * rate)}** – har {verb} {kr(abs(eq - START_CAPITAL) * rate)} totalt ({pct_sv(eq / START_CAPITAL - 1)})  ",
+    return [f"**Bot 4 – daytradern: har {kr(eq * rate)}** – har {verb} {kr(abs(eq - START_CAPITAL) * rate)} totalt ({pct_sv(eq / START_CAPITAL - 1)})  ",
             f"Senaste dygnet: {kr((eq - day_ago) * rate, sign=True)} · Affärer senaste timmen: {len(hour)} · idag: {len(today)} · totalt: {len(tr)} · vinstandel: {(wins / len(tr) * 100 if tr else 0):.0f} %  ",
             f"Bästa affär: {t_txt(best)}  ",
             f"Sämsta affär: {t_txt(worst)}  ",
@@ -2723,7 +2798,7 @@ def league_mail_lines(rate, now_ms):
 ALL_BOTS = [("Bot 1", "Köper bara (trend)", "trend_state.json", "#3fb68b"),
             ("Bot 2", "Köper och blankar (trend)", "trend_state_langkort.json", "#7cb7ff"),
             ("Bot 3", "Samlar funding (neutral)", "funding_state.json", "#e8c96a"),
-            ("Bot 4", "Snabbhandlaren (experiment)", "fast_state.json", "#f08a84"),
+            ("Bot 4", "Daytradern (handlar ofta)", "fast_state.json", "#f08a84"),
             ("Bot 5", "Lagledaren (fördelar mellan de andra)", "league_state.json", "#c39bff"),
             ("Bot 6", "Mönsterläsaren (läser grafen)", "chart_state.json", "#5fd3d3")]
 
@@ -2786,8 +2861,10 @@ BOT_EXPLAIN = {
              "Kan alltså tjäna både när marknaden går upp och ner. Ser över alla mynt en gång per dygn; stop-loss och vinstlås varje sekund.",
     "Bot 3": "Köper ett mynt och blankar samma mynt samtidigt, så prisrörelser tar ut varandra. Tjänar på avgiften som "
              "hävstångstraders betalar var 8:e timme (kl 01, 09, 17). Små men jämna intäkter.",
-    "Bot 4": "Experiment som handlar hela tiden: hoppar på mynt som rört sig mer än 0,3 % på 5 minuter och säljer vid +0,5 %, "
-             "−0,3 % eller efter 15 minuter. Visar hur mycket avgifterna kostar när man handlar ofta.",
+    "Bot 4": "Daytrader som handlar många gånger per dag, som en riktig person vid skärmen. Gör 1-minutsgrafer av "
+             "sekundpriserna och handlar bara med trenden: köper rekyler och utbrott i upptrend, blankar i nedtrend. "
+             "Varje affär riskerar 0,75 % av pengarna. Inget fast vinstmål: släpande stopp låter vinnarna springa, "
+             "förlorare kapas snabbt. Pausar ett mynt 30 min efter förlust och slutar för dagen vid −3 %.",
     "Bot 6": "Läser graferna som en teknisk analytiker varje timme: utbrott med volym, dubbelbotten/-topp, trendstruktur "
              "och RSI-divergens. Stop-loss och vinstmål efter hur mycket myntet svänger. Lär sig: mönster som tjänar pengar live "
              "får större insats, mönster som förlorar mindre.",
