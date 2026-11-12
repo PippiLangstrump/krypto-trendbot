@@ -2841,15 +2841,19 @@ def _with_open(f, st, trades):
                 side = p["side"]
                 back = trade_value(p["cost"], p["entry"], exit_price(lp.get(sym, p["entry"]), side), side)
                 cost = p["cost"]
-            out.append({"symbol": sym, "side": side, "ret": back / cost - 1, "pnl": back - cost, "exit_ts": p.get("ts", now),
+            out.append({"symbol": sym, "side": side, "ret": back / cost - 1, "pnl": back - cost, "exit_ts": p.get("ts", now), "cost": cost,
                         "reason": "pågår", "pattern": p.get("pattern"), "open": True})
         except Exception:
             continue
     return out
 
 
+TRADE_HEAD = ("<tr class='th'><td></td><td>Tid</td><td>Mynt</td><td></td><td>Insats</td><td>Värde nu / såld för</td>"
+              "<td>%</td><td>Resultat</td><td>Varför</td></tr>")
+
+
 def _trade_rows(trs, rate):
-    rows = ""
+    rows = TRADE_HEAD
     for t in trs:
         side = {"long": "köpt", "short": "blankat"}.get(t.get("side"), "funding")
         why = "" if t.get("open") else {"trendsignal": "trenden vände", "signal": "trenden vände", "stopp": "stop-loss",
@@ -2857,7 +2861,10 @@ def _trade_rows(trs, rate):
         if t.get("pattern"):
             why = CHART_PATTERNS.get(t["pattern"], t["pattern"]) + (f" · {why}" if why else "")
         badge = ("<span class='b open'>Öppen</span>" if t.get("open") else "<span class='b done'>Avslutad</span>")
+        stake = t.get("cost") or (t["pnl"] / t["ret"] if t.get("ret") else 0)
+        value = stake + t["pnl"]
         rows += (f"<tr><td>{badge}</td><td>{fmt_ts(t.get('exit_ts', 0) + 3600000)[5:16]}</td><td>{t['symbol'].replace('USDT', '')}</td><td>{side}</td>"
+                 f"<td>{kr(stake * rate)}</td><td>{kr(value * rate)}</td>"
                  f"<td class='{'pos' if t['pnl'] >= 0 else 'neg'}'>{pct_sv(t['ret'])}</td>"
                  f"<td class='{'pos' if t['pnl'] >= 0 else 'neg'}'>{kr(t['pnl'] * rate, sign=True)}</td><td class='small'>{why}</td></tr>")
     return rows
@@ -2958,7 +2965,7 @@ h1{{font-size:22px;margin:4px 0}} h2{{font-size:16px;color:#bbb;margin:22px 0 8p
 .box{{background:#181b22;border-radius:10px;padding:10px}} table{{width:100%;border-collapse:collapse;font-size:13px}} td{{padding:6px;border-bottom:1px solid #262a33}}
 .legend span{{margin-right:12px;font-size:12px}} summary{{cursor:pointer;list-style:none}} summary::-webkit-details-marker{{display:none}}
 .info{{color:#7cb7ff;font-size:12px}} .sub{{color:#bbb;font-size:13px;font-weight:600;margin:12px 0 4px}}
-.scroll{{max-height:260px;overflow-y:auto}} .tiny{{color:#888;font-size:11px;margin-top:3px}} .b{{font-size:11px;padding:2px 6px;border-radius:8px;white-space:nowrap}} .b.open{{background:#173b2e;color:#5fd3a5}} .b.done{{background:#2a2e38;color:#aaa}} details table td{{font-size:12px;padding:4px}} .explain{{background:#11141a;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;color:#ccc;line-height:1.45}} ul{{padding-left:18px;font-size:13px;color:#bbb}}</style></head><body>
+.scroll{{max-height:300px;overflow:auto}} details table{{display:block;overflow-x:auto;white-space:nowrap}} .th td{{color:#888;font-size:11px}} .tiny{{color:#888;font-size:11px;margin-top:3px}} .b{{font-size:11px;padding:2px 6px;border-radius:8px;white-space:nowrap}} .b.open{{background:#173b2e;color:#5fd3a5}} .b.done{{background:#2a2e38;color:#aaa}} details table td{{font-size:12px;padding:4px}} .explain{{background:#11141a;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;color:#ccc;line-height:1.45}} ul{{padding-left:18px;font-size:13px;color:#bbb}}</style></head><body>
 <h1>📈 Kryptobotarna</h1><div class="muted">Låtsaspengar, riktiga priser · uppdaterad {_se_now().strftime('%d/%m %H:%M')} · laddar om var 5:e minut</div>
 <h2>Alla botar – % sedan start</h2><div class="box">{svg}<div class="legend">{''.join(f"<span style='color:{c}'>● {n}</span>" for n, _, _, c, _ in data)}</div></div>
 <h2>Botarna</h2>{cards}
