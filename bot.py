@@ -2224,6 +2224,10 @@ def write_mail_report(path=None):
     except Exception:
         pass
     try:
+        lines += fast_mail_lines(rate, now_ms)
+    except Exception as e:
+        lines.append(f"Bot 4: kunde inte läsa läget ({e})")
+    try:
         lines += funding_mail_lines(rate, now_ms)
     except Exception as e:
         lines.append(f"Bot 3: kunde inte läsa läget ({e})")
@@ -2483,6 +2487,139 @@ def funding_mail_lines(rate, now_ms):
             f"Bästa just nu: {t_txt(best)}  ",
             f"Sämsta just nu: {t_txt(worst)}  ",
             f"Samlar på: {coins}", ""]
+
+
+# ============================================================================
+# BOT 4: SNABBHANDLAREN (experiment - handlar hela tiden på korta rörelser)
+# ============================================================================
+# Varje minut: har ett mynt rört sig mer än 0,3 % senaste 5 minuterna -> hoppa på
+# (köp om upp, blanka om ner). Varje sekund: sälj vid +0,5 % (vinst), -0,3 % (stopp)
+# eller efter 15 minuter. Max 4 affärer samtidigt, 25 % av kassan var.
+FAST_STATE_FILE = os.path.join(HERE, "fast_state.json")
+FAST_TRIGGER = 0.003
+FAST_TP, FAST_SL, FAST_MAX_MIN = 0.005, 0.003, 15
+FAST_SLOTS = 4
+
+
+def run_fast_watch(minutes=55):
+    st = None
+    if os.path.exists(FAST_STATE_FILE):
+        try:
+            with open(FAST_STATE_FILE, encoding="utf-8") as f:
+                st = json.load(f)
+        except Exception:
+            st = None
+    if not st:
+        st = {"start_ms": int(time.time() * 1000), "cash": START_CAPITAL, "pos": {}, "trades": [], "equity": [], "mins": {}}
+        log("Snabbhandlaren startar med 10 000 låtsas-USDT")
+    prices = {}
+    end = time.time() + minutes * 60
+    last_min, polls, fails, last_save = None, 0, 0, time.time()
+
+    def equity():
+        e = st["cash"]
+        for sym, p in st["pos"].items():
+            e += mark_value(p["cost"], p["entry"], prices.get(sym, p["entry"]), p["side"])
+        return e
+
+    def close(sym, price, now, why):
+        p = st["pos"].pop(sym)
+        x = exit_price(price, p["side"])
+        val = trade_value(p["cost"], p["entry"], x, p["side"], (now - p["ts"]) / 3.6e6)
+        st["cash"] += val
+        st["trades"].append({"symbol": sym, "side": p["side"], "ret": val / p["cost"] - 1, "pnl": val - p["cost"],
+                             "entry_ts": p["ts"], "exit_ts": now, "reason": why})
+        st["trades"] = st["trades"][-5000:]
+
+    while time.time() < end:
+        t1 = time.time()
+        now = int(t1 * 1000)
+        try:
+            prices.update(fetch_all_prices())
+            polls += 1
+        except Exception:
+            fails += 1
+            time.sleep(1)
+            continue
+        # sälj-regler varje sekund
+        for sym, p in list(st["pos"].items()):
+            cur = prices.get(sym)
+            if cur is None:
+                continue
+            r = (cur / p["entry"] - 1) * (1 if p["side"] == "long" else -1)
+            if r >= FAST_TP:
+                close(sym, cur, now, "vinst")
+            elif r <= -FAST_SL:
+                close(sym, cur, now, "stopp")
+            elif now - p["ts"] >= FAST_MAX_MIN * 60000:
+                close(sym, cur, now, "tid")
+        # ny minut: spara priser och leta nya affärer
+        minute = now // 60000
+        if minute != last_min:
+            last_min = minute
+            for sym, pr in prices.items():
+                arr = st["mins"].setdefault(sym, [])
+                arr.append([now, pr])
+                del arr[:-30]
+            eq = equity()
+            st["equity"].append([now, round(eq, 2)])
+            st["equity"] = st["equity"][-6000:]
+            for sym, arr in st["mins"].items():
+                if sym in st["pos"] or len(st["pos"]) >= FAST_SLOTS or len(arr) < 6:
+                    continue
+                if now - arr[-6][0] > 7 * 60000:      # för gamla priser (glapp mellan körningar)
+                    continue
+                move = arr[-1][1] / arr[-6][1] - 1
+                if abs(move) >= FAST_TRIGGER:
+                    side = "long" if move > 0 else "short"
+                    cost = min(eq / FAST_SLOTS, st["cash"])
+                    if cost < MIN_TRADE_USDT:
+                        continue
+                    st["cash"] -= cost
+                    st["pos"][sym] = {"side": side, "entry": entry_price(prices[sym], side), "cost": cost, "ts": now}
+        if time.time() - last_save > 120:
+            with open(FAST_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:
+                json.dump(st, f)
+            os.replace(FAST_STATE_FILE + ".tmp", FAST_STATE_FILE)
+            last_save = time.time()
+        time.sleep(max(0.0, 1.0 - (time.time() - t1)))
+    st["watch"] = {"polls": polls, "fails": fails, "last_poll": int(time.time() * 1000)}
+    st["last_prices"] = prices
+    with open(FAST_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(st, f)
+    os.replace(FAST_STATE_FILE + ".tmp", FAST_STATE_FILE)
+    tr = st["trades"]
+    log(f"Snabbhandlaren: {money(equity())} USDT, {len(tr)} affärer totalt, {len(st['pos'])} öppna")
+
+
+def fast_mail_lines(rate, now_ms):
+    if not os.path.exists(FAST_STATE_FILE):
+        return []
+    with open(FAST_STATE_FILE, encoding="utf-8") as f:
+        st = json.load(f)
+    eq_hist = st.get("equity") or [[now_ms, START_CAPITAL]]
+    eq = eq_hist[-1][1]
+    day_ago = next((e for t, e in reversed(eq_hist) if t <= now_ms - 86000 * 1000), eq_hist[0][1])
+    tr = st["trades"]
+    today0 = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+    today = [t for t in tr if t["exit_ts"] >= today0]
+    hour = [t for t in tr if t["exit_ts"] >= now_ms - 3600 * 1000]
+    wins = sum(1 for t in tr if t["pnl"] > 0)
+    fees = sum(t.get("cost", 0) for t in tr)
+    best = max(tr, key=lambda t: t["pnl"]) if tr else None
+    worst = min(tr, key=lambda t: t["pnl"]) if tr else None
+
+    def t_txt(t):
+        if not t:
+            return "inga än"
+        what = "köpt" if t["side"] == "long" else "blankat"
+        return f"{t['symbol'].replace('USDT', '')} ({what}) {pct_sv(t['ret'])} = {kr(t['pnl'] * rate, sign=True)}"
+    verb = "tjänat" if eq >= START_CAPITAL else "förlorat"
+    return [f"**Bot 4 – snabbhandlaren (experiment): har {kr(eq * rate)}** – har {verb} {kr(abs(eq - START_CAPITAL) * rate)} totalt ({pct_sv(eq / START_CAPITAL - 1)})  ",
+            f"Senaste dygnet: {kr((eq - day_ago) * rate, sign=True)} · Affärer senaste timmen: {len(hour)} · idag: {len(today)} · totalt: {len(tr)} · vinstandel: {(wins / len(tr) * 100 if tr else 0):.0f} %  ",
+            f"Bästa affär: {t_txt(best)}  ",
+            f"Sämsta affär: {t_txt(worst)}  ",
+            f"Öppna just nu: {', '.join(s.replace('USDT', '') + (' (köpt)' if p['side'] == 'long' else ' (blankat)') for s, p in st['pos'].items()) or 'inga'}", ""]
 
 
 def run_trend_live(mode="long", once=False, watch_minutes=0):
@@ -2788,6 +2925,8 @@ if __name__ == "__main__":
             run_self_improve(fake=len(args) > 1 and args[1] == "demo")
         elif mode == "trendwatch":  # molnet: en körning + bevaka varje sekund i N minuter
             run_trend_live(args[1], once=True, watch_minutes=float(args[2]) if len(args) > 2 else 55)
+        elif mode == "fastwatch":
+            run_fast_watch(float(args[1]) if len(args) > 1 else 55)
         elif mode == "fundingonce":
             run_funding_once()
         elif mode == "mailrapport":

@@ -31,6 +31,7 @@ jobs:
           python bot.py trendwatch long $M &
           sleep 20
           python bot.py trendwatch longshort $M &
+          python bot.py fastwatch $M &
           wait
           python bot.py fundingonce || echo "Funding-boten misslyckades denna gång"
           python bot.py mailrapport
