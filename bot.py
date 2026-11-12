@@ -1754,8 +1754,10 @@ def score_headline(title):
 
 
 TRUMP_FEED = "https://www.trumpstruth.org/feed"
-RISK_OFF_WORDS = ["tariff", "sanction", "war ", "invasion", "military strike", "airstrike", "embargo",
-                  "retaliat", "trade war", "shut down", "default", "martial law", "nuclear"]
+RISK_OFF_WORDS = ["tariff", "sanctions on", "new sanctions", "declare war", "declared war", "go to war",
+                  "invade", "invasion of", "military strike", "airstrike", "embargo", "trade war",
+                  "martial law", "nuclear strike", "nuclear weapon", "ban crypto", "ban bitcoin"]
+RISK_OFF_IGNORE = ["secretary of war", "department of war", "war room", "warrant"]
 RISK_OFF_HOURS = 6
 MUSK_HOURS = 24
 
@@ -1775,6 +1777,8 @@ def social_check(st, now):
                 continue
             seen.add(key)
             low = " " + txt.lower() + " "
+            for ign in RISK_OFF_IGNORE:
+                low = low.replace(ign, " ")
             if any(w in low for w in RISK_OFF_WORDS):
                 soc["risk_off_until"] = now + RISK_OFF_HOURS * 3600 * 1000
                 soc["reason"] = "Trump: " + re.sub(r"<[^>]+>", " ", txt)[:120].strip()
