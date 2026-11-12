@@ -2827,32 +2827,47 @@ def _se_now():
         return datetime.utcnow() + __import__("datetime").timedelta(hours=1)
 
 
-def write_morning_report(path=None):
+def write_morning_report(path=None, evening=False):
+    """Morgon (kl 06): senaste 24 timmarna. Kväll (kl 20): dagens resultat sedan kl 06."""
     now_ms = int(time.time() * 1000)
     rate, _ = usd_sek()
-    rows = []
+    se = _se_now()
+    if evening:
+        since = now_ms - int((se - se.replace(hour=6, minute=0, second=0, microsecond=0)).total_seconds() * 1000)
+        head = f"## 🌙 Kvällsrapport – dagens resultat {se.strftime('%d/%m')}"
+        sub, when = "Sedan kl 06 i morse · låtsaspengar", "idag"
+        fname = "KVALLSRAPPORT.md"
+    else:
+        since = now_ms - 86400 * 1000
+        head = f"## ☀️ God morgon! Nattens resultat – {se.strftime('%d/%m')}"
+        sub, when = "Senaste 24 timmarna · låtsaspengar", "i natt"
+        fname = "MORGONRAPPORT.md"
+    lines = [head, "", f"<sub>{sub}</sub>", ""]
     for name, desc, f, _c in ALL_BOTS:
         d = _bot_data(f, now_ms)
-        if d:
-            rows.append((name, desc, d))
-    lines = [f"## ☀️ God morgon! Nattens resultat – {_se_now().strftime('%d/%m')}", "",
-             "<sub>Senaste 24 timmarna · låtsaspengar</sub>", ""]
-    for i, (name, desc, d) in enumerate(rows):
-        ch = d["eq"] - d["d24"]
-        best = max(d["t24"], key=lambda t: t["pnl"]) if d["t24"] else None
-        worst = min(d["t24"], key=lambda t: t["pnl"]) if d["t24"] else None
+        if not d:
+            continue
+        start = next((e for t, e in reversed(d["eqh"]) if t <= since), d["eqh"][0][1])
+        trs = [t for t in d["trades"] if t.get("exit_ts", 0) >= since]
+        best = max(trs, key=lambda t: t["pnl"]) if trs else None
+        worst = min(trs, key=lambda t: t["pnl"]) if trs else None
         bw = ""
         if best:
             bw = (f"  \nBästa: {best['symbol'].replace('USDT', '')} {kr(best['pnl'] * rate, sign=True)} · "
                   f"Sämsta: {worst['symbol'].replace('USDT', '')} {kr(worst['pnl'] * rate, sign=True)}")
-        lines.append(f"**{name} – {desc}:** {kr(ch * rate, sign=True)} ({pct_sv(d['eq'] / d['d24'] - 1)}) i natt · "
-                     f"totalt {kr((d['eq'] - START_CAPITAL) * rate, sign=True)} · {len(d['t24'])} affärer{bw}")
+        if f == "copy_state.json":
+            per = copy_trader_stats(d["st"])
+            who = ", ".join(f"{k} {pct_sv(v['pct'])}" for k, v in sorted(per.items(), key=lambda x: -x[1]["pct"]) if v["stake"])
+            if who:
+                bw += f"  \nPer trader (totalt): {who}"
+        lines.append(f"**{name} – {desc}:** {kr((d['eq'] - start) * rate, sign=True)} ({pct_sv(d['eq'] / start - 1)}) {when} · "
+                     f"totalt {kr((d['eq'] - START_CAPITAL) * rate, sign=True)} · {len(trs)} affärer{bw}")
         lines.append("")
     lines.append("Webbsida med grafer: https://raw.githack.com/PippiLangstrump/krypto-trendbot/main/docs/index.html")
     lines.append("")
     lines.append("@PippiLangstrump")
-    with open(path or os.path.join(HERE, "MORGONRAPPORT.md"), "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
+    with open(path or os.path.join(HERE, fname), "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
 
 
 BOT_EXPLAIN = {
@@ -4170,6 +4185,8 @@ if __name__ == "__main__":
             run_fast_watch(float(args[1]) if len(args) > 1 else 55)
         elif mode == "morgon":
             write_morning_report()
+        elif mode == "kvall":
+            write_morning_report(evening=True)
         elif mode == "webbsida":
             write_dashboard()
         elif mode == "chartonce":

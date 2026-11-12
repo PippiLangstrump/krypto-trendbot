@@ -1,0 +1,34 @@
+name: Kvällsrapport
+
+on:
+  schedule:
+    - cron: "0 19 * * *"   # 20:00 svensk vintertid (21:00 sommartid)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency: kvall
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python bot.py kvall
+      - name: Skicka kvällsrapporten (GitHub mejlar den)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE=$(gh issue list --label kvallsrapport --state open --json number --jq '.[0].number' || true)
+          if [ -z "$ISSUE" ]; then
+            gh label create kvallsrapport --color fbca04 --description "Kvällsrapporter" || true
+            URL=$(gh issue create --title "🌙 Kvällsrapporter" --label kvallsrapport \
+              --body "Varje kväll kl 20: dagens resultat för alla botar. @PippiLangstrump")
+            ISSUE=${URL##*/}
+          fi
+          gh issue comment "$ISSUE" --body-file KVALLSRAPPORT.md
