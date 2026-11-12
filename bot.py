@@ -2871,8 +2871,8 @@ BOT_EXPLAIN = {
              "(för lite pengar i handeln, för nya, fler säljare än köpare). Köper pyttesmå lotter, 2 % var, i upp till 40 mynt. "
              "Vid 2x säljs hälften så insatsen är hemma; resten får springa tills den tappar 60 % från toppen. "
              "Ett lotteri med regler: de flesta lotter förlorar, en enda stor vinnare kan bära allt.",
-    "Bot 8": "Härmar kända memecoin-traders (Cented, Theo, West, Yugi) genom att läsa deras offentliga plånböcker på "
-             "Solana. När de köper (minst 0,5 SOL) köper boten samma mynt för 1,5 % av pengarna; när de säljer säljer den samma "
+    "Bot 8": "Härmar 10 kända memecoin-traders (Cented, Theo, Cupsey, Decu, Pain, Kadenox, Trunoest, Kev, West, Yugi) genom att läsa deras offentliga plånböcker på "
+             "Solana. När de köper (minst 0,5 SOL) köper boten samma mynt för 1 % av pengarna; när de säljer säljer den samma "
              "andel. Kommer alltid in lite efter dem och till sämre pris – det räknas med.",
     "Bot 6": "Läser graferna som en teknisk analytiker varje timme: utbrott med volym, dubbelbotten/-topp, trendstruktur "
              "och RSI-divergens. Stop-loss och vinstmål efter hur mycket myntet svänger. Lär sig: mönster som tjänar pengar live "
@@ -2930,6 +2930,16 @@ def _with_open(f, st, trades):
         except Exception:
             continue
     return out
+
+
+def _copy_box(st, rate):
+    import html as _h
+    rows = "".join(
+        f"<tr><td>{_h.escape(k)}</td><td>{v['n'] + v['open']} ({v['open']} öppna)</td><td>{kr(v['stake'] * rate)}</td>"
+        f"<td style='color:{'#3fb68b' if v['pnl'] >= 0 else '#f08a84'}'>{pct_sv(v['pct'])}</td><td>{kr(v['pnl'] * rate, sign=True)}</td></tr>"
+        for k, v in sorted(copy_trader_stats(st).items(), key=lambda x: -x[1]["pct"]))
+    return ("<div class='sub'>Traders som kopieras – resultat för deras kopierade affärer</div><table>"
+            "<tr class='th'><td>Trader</td><td>Affärer</td><td>Insatt</td><td>%</td><td>Resultat</td></tr>" + rows + "</table>")
 
 
 TRADE_HEAD = ("<tr class='th'><td></td><td>Tid</td><td>Mynt</td><td></td><td>Insats</td><td>Värde nu / såld för</td>"
@@ -3095,7 +3105,7 @@ def write_dashboard():
             extra = "Äger/blankar: " + (", ".join(s.replace("USDT", "") + (" ↑" if p.get("qty", 1) > 0 else " ↓") for s, p in pos.items()) or "inget")
         cards += f"""<div class="card" style="border-left:4px solid {c}">
 <details><summary class="name">{n} – {desc} <span class="info">ⓘ tryck för mer</span></summary>
-<div class="explain">{_h.escape(BOT_EXPLAIN.get(n, ""))}</div>
+<div class="explain">{_h.escape(BOT_EXPLAIN.get(n, ""))}{_copy_box(d['st'], rate) if n == "Bot 8" else ""}</div>
 <div class="sub">Historik</div>{_mini_svg(d['eqh'], rate, c)}
 <div class="sub">Dag för dag (grönt = plusdag, rött = minusdag)</div>{_bars_svg((consistency(d['eqh']) or {}).get('days', []))}
 <div class="sub">Nedgång från toppen (hur ont det gjort på vägen)</div>{_dd_svg((consistency(d['eqh']) or {}).get('dd', []))}
@@ -3585,13 +3595,19 @@ def gem_mail_lines(rate, now_ms):
 # boten samma mynt med en liten insats; när de säljer säljer boten samma andel.
 # Vi kommer alltid in lite senare och till sämre pris än dem - det räknas med.
 COPY_STATE_FILE = os.path.join(HERE, "copy_state.json")
-COPY_WALLETS = {   # namn: offentlig Solana-plånbok (från KOL-trackers)
+COPY_WALLETS = {   # namn: offentlig Solana-plånbok (från KOL-trackers; topplistor efter 30-dagars vinst)
     "Cented": "CyaE1VxvBrahnPWkqm5VsdCvyS2QmNht2UFrKJHga54o",
     "Theo": "Bi4rd5FH5bYEN8scZ7wevxNZyNmKHdaBcvewdPFxYdLt",
+    "Cupsey": "2fg5QD1eD7rzNNCsvnhmXFm5hqNgwTTG8p7kQ6f3rx6f",
+    "Decu": "4vw54BmAogeRV3vPKWyFet5yf8DTLcREzdSzx4rw9Ud9",
+    "Pain": "J6TDXvarvpBdPXTaTU8eJbtso1PUCYKGkVtMKUUY8iEa",
+    "Kadenox": "B32QbbdDAyhvUQzjcaM5j6ZVKwjCxAwGH5Xgvb9SJqnC",
+    "Trunoest": "ardinRsN1mNYVeoJWTBsWeYeXvuR9UUDGMsCDKpb6AT",
+    "Kev": "BTf4A2exGK9BCVDNzy65b9dUzXgMqB4weVkvTMFQsadd",
     "West": "JDd3hy3gQn2V982mi1zqhNqUw1GfV2UL6g76STojCJPN",
     "Yugi": "4TCMpxeevymUtCemwcVozhBLWq8Fikc1pVpfcW9zp66B",
 }
-COPY_STAKE = 0.015           # andel av pengarna per kopierat köp
+COPY_STAKE = 0.01            # andel av pengarna per kopierat köp
 COPY_MIN_SOL = 0.5           # kopiera alla riktiga köp (hoppar bara över damm/avgifter under 0,5 SOL)
 COPY_MAX_POS = 30
 COPY_STOP = -0.70
@@ -3622,10 +3638,13 @@ def parse_swap(tx, wallet):
     """(mint, 'buy'/'sell', sol_belopp, andel_såld) eller None."""
     if not tx or tx["meta"].get("err"):
         return None
-    keys = [k["pubkey"] if isinstance(k, dict) else k for k in tx["transaction"]["message"]["accountKeys"]]
+    raw = tx["transaction"]["message"]["accountKeys"]
+    keys = [k["pubkey"] if isinstance(k, dict) else k for k in raw]
     if wallet not in keys:
         return None
     i = keys.index(wallet)
+    if isinstance(raw[i], dict) and not raw[i].get("signer"):
+        return None                              # någon annans transaktion som bara nämner plånboken
     sol = (tx["meta"]["postBalances"][i] - tx["meta"]["preBalances"][i]) / 1e9
     pre, post = {}, {}
     for side, arr in ((pre, tx["meta"].get("preTokenBalances") or []), (post, tx["meta"].get("postTokenBalances") or [])):
@@ -3699,7 +3718,7 @@ def run_copy_watch(minutes=55):
 
     def poll(kol, wallet, now):
         last = st["last_sig"].get(kol)
-        opts = {"limit": 25}
+        opts = {"limit": 200}
         if last:
             opts["until"] = last
         sigs = _rpc("getSignaturesForAddress", [wallet, opts])
@@ -3708,9 +3727,11 @@ def run_copy_watch(minutes=55):
         st["last_sig"][kol] = sigs[0]["signature"]
         if not last:
             return                                   # första gången: börja bevaka från nu
-        for s in reversed(sigs):
-            if s.get("err"):
-                continue
+        ok = [x for x in sigs if not x.get("err")]
+        if len(ok) > 15:
+            log(f"  Kopieraren: {kol} gjorde {len(ok)} transaktioner sedan sist, läser de 15 senaste")
+            ok = ok[:15]
+        for s in reversed(ok):
             try:
                 tx = _rpc("getTransaction", [s["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}])
                 time.sleep(0.4)
@@ -3775,6 +3796,21 @@ def run_copy_watch(minutes=55):
     log(f"Kopieraren: {money(equity())} USDT, {len(st['pos'])} öppna, {len(st['trades'])} försäljningar")
 
 
+def copy_trader_stats(st):
+    """Per trader: insatt, resultat (avslutat + öppet) och procent."""
+    out = {k: {"stake": 0.0, "pnl": 0.0, "n": 0, "open": 0} for k in COPY_WALLETS}
+    for t in st.get("trades", []):
+        o = out.setdefault(t["kol"], {"stake": 0.0, "pnl": 0.0, "n": 0, "open": 0})
+        o["stake"] += t.get("cost", 0); o["pnl"] += t["pnl"]; o["n"] += 1
+    for p in st.get("pos", {}).values():
+        o = out.setdefault(p["kol"], {"stake": 0.0, "pnl": 0.0, "n": 0, "open": 0})
+        v = p["qty"] * p["price"] * (1 - _gem_cost(p["qty"] * p["price"], p["liq"]))
+        o["stake"] += p["cost"]; o["pnl"] += v - p["cost"]; o["open"] += 1
+    for o in out.values():
+        o["pct"] = o["pnl"] / o["stake"] if o["stake"] else 0.0
+    return out
+
+
 def copy_mail_lines(rate, now_ms):
     if not os.path.exists(COPY_STATE_FILE):
         return []
@@ -3783,11 +3819,9 @@ def copy_mail_lines(rate, now_ms):
     eqh = st.get("equity") or [[now_ms, START_CAPITAL]]
     eq = eqh[-1][1]
     d24 = next((e for t, e in reversed(eqh) if t <= now_ms - 86000 * 1000), eqh[0][1])
-    per = {}
-    for t in st["trades"]:
-        per[t["kol"]] = per.get(t["kol"], 0.0) + t["pnl"]
+    per = copy_trader_stats(st)
     verb = "tjänat" if eq >= START_CAPITAL else "förlorat"
-    who = ", ".join(f"{k} {kr(v * rate, sign=True)}" for k, v in sorted(per.items(), key=lambda x: -x[1])) or "inga avslutade än"
+    who = ", ".join(f"{k} {pct_sv(v['pct'])}" for k, v in sorted(per.items(), key=lambda x: -x[1]["pct"]) if v["stake"]) or "inga kopierade affärer än"
     return [f"**Bot 8 – kopieraren: har {kr(eq * rate)}** – har {verb} {kr(abs(eq - START_CAPITAL) * rate)} totalt ({pct_sv(eq / START_CAPITAL - 1)})  ",
             f"Senaste dygnet: {kr((eq - d24) * rate, sign=True)} · öppna: {len(st['pos'])} · försäljningar: {len(st['trades'])}  ",
             f"Resultat per trader: {who}", ""]

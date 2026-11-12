@@ -17,21 +17,23 @@ jobs:
           python-version: "3.12"
       - run: |
           python - <<'PY'
-          import bot, time, json
-          w = bot.COPY_WALLETS["Cented"]
-          sigs = bot._rpc("getSignaturesForAddress", [w, {"limit": 6}])
-          for sg in sigs:
-              tx = bot._rpc("getTransaction", [sg["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}])
-              if not tx:
-                  print("DBG none"); continue
-              keys = [k["pubkey"] if isinstance(k, dict) else k for k in tx["transaction"]["message"]["accountKeys"]]
-              m = tx["meta"]
-              i = keys.index(w) if w in keys else -1
-              print("DBG ver", tx.get("version"), "err", m.get("err"), "inkeys", i, "nkeys", len(keys), "loaded", list((m.get("loadedAddresses") or {}).keys()))
-              if i >= 0:
-                  print("DBG sol", (m["postBalances"][i] - m["preBalances"][i]) / 1e9)
-              print("DBG pre", [(x.get("owner", "")[:6], x["mint"][:6], x["uiTokenAmount"].get("uiAmount")) for x in (m.get("preTokenBalances") or [])][:6])
-              print("DBG post", [(x.get("owner", "")[:6], x["mint"][:6], x["uiTokenAmount"].get("uiAmount")) for x in (m.get("postTokenBalances") or [])][:6])
-              print("DBG logs", [l[:60] for l in (m.get("logMessages") or [])][:4])
-              time.sleep(0.6)
+          import bot, time
+          for kol, w in bot.COPY_WALLETS.items():
+              try:
+                  sigs = bot._rpc("getSignaturesForAddress", [w, {"limit": 200}])
+                  ok = [x for x in sigs if not x.get("err")]
+                  n = 0
+                  for sg in ok[:8]:
+                      tx = bot._rpc("getTransaction", [sg["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}])
+                      sw = bot.parse_swap(tx, w)
+                      if sw:
+                          n += 1
+                          if n <= 2:
+                              print("  SWAP", kol, sw[1], round(sw[2], 2), "SOL", round(sw[3], 2))
+                      time.sleep(0.5)
+                  age = (time.time() - ok[0]["blockTime"]) / 3600 if ok else None
+                  print("KOL", kol, "sig", len(sigs), "ok", len(ok), "swappar i 8 senaste", n, "senaste ok (h sedan)", age and round(age, 1))
+              except Exception as e:
+                  print("KOL", kol, "FEL", e)
+              time.sleep(1)
           PY
