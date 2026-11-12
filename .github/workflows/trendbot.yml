@@ -25,14 +25,15 @@ jobs:
         env:
           BOT_NO_BROWSER: "1"
         run: |
-          M=$(( 66 - 10#$(date -u +%M) ))
-          if [ $M -gt 58 ]; then M=58; fi
+          # kör fram till ~30 sek före nästa hela timme, så mejlet kommer prick kl XX:00
+          M=$(python3 -c "import time; s=3600-time.time()%3600-30; s = s if s > 150 else s + 3600; print(round(s/60, 2))")
+          M2=$(python3 -c "print(round($M - 0.35, 2))")
           echo "Bevakar i $M minuter"
           git config user.name "trendbot"
           git config user.email "trendbot@users.noreply.github.com"
           python bot.py trendwatch long $M & P1=$!
           sleep 20
-          python bot.py trendwatch longshort $M & P2=$!
+          python bot.py trendwatch longshort $M2 & P2=$!
           python bot.py fastwatch $M & P3=$!
           # uppdatera webbsidan och spara läget var 5:e minut medan botarna kör
           (
