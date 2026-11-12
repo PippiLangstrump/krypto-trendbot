@@ -2177,7 +2177,9 @@ def write_mail_report(path=None):
         eq = eq_hist[-1][1]
         day_ago = next((e for t, e in reversed(eq_hist) if t <= now_ms - 86000 * 1000), eq_hist[0][1])
         tr = st.get("trades", [])
-        hour_tr = [t for t in tr if t["exit_ts"] >= now_ms - 3600 * 1000]
+        today0 = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+        day_tr = [t for t in tr if t["exit_ts"] >= today0]
+        opened_today = [p for p in st.get("pos", {}).values() if p.get("ts", 0) >= today0]
         allt = [{"symbol": t["symbol"], "side": t["side"], "ret": t["ret"], "pnl": t["pnl"]} for t in tr]
         lp = st.get("last_prices", {})
         for sym, p in st.get("pos", {}).items():
@@ -2193,7 +2195,8 @@ def write_mail_report(path=None):
             if not t:
                 return "inga affärer än"
             what = "köpt" if t["side"] == "long" else "blankat"
-            return f"{t['symbol'].replace('USDT', '')} ({what}) {pct_sv(t['ret'])} = {kr(t['pnl'] * rate, sign=True)}"
+            state = "pågår" if t.get("open") else "såld"
+            return f"{t['symbol'].replace('USDT', '')} ({what}, {state}) {pct_sv(t['ret'])} = {kr(t['pnl'] * rate, sign=True)}"
         holding = [t for t in allt if t.get("open")]
         coins = ", ".join(t["symbol"].replace("USDT", "") + (" (köpt)" if t["side"] == "long" else " (blankat)") for t in holding)
         verb = "tjänat" if eq >= START_CAPITAL else "förlorat"
@@ -2206,9 +2209,9 @@ def write_mail_report(path=None):
             status = "✅ igång (kollar priserna varje timme)"
         lines += [f"Status: {status}  "]
         lines += [f"**{name}: har {kr(eq * rate)}** – har {verb} {kr(abs(eq - START_CAPITAL) * rate)} totalt ({pct_sv(eq / START_CAPITAL - 1)})  ",
-                  f"Senaste dygnet: {kr((eq - day_ago) * rate, sign=True)} · Affärer senaste timmen: {len(hour_tr)}  ",
-                  f"Bästa just nu: {t_txt(best)}  ",
-                  f"Sämsta just nu: {t_txt(worst)}  ",
+                  f"Senaste dygnet: {kr((eq - day_ago) * rate, sign=True)} · Affärer idag: {len(day_tr) + len(opened_today)} · totalt: {len(tr) + len(st.get('pos', {}))}  ",
+                  f"Bästa affär hittills: {t_txt(best)}  ",
+                  f"Sämsta affär hittills: {t_txt(worst)}  ",
                   f"Äger/blankar: {coins or 'inget – väntar på bättre läge'}", ""]
     try:
         with open(TREND_STATE_FILE.replace(".json", "_langkort.json"), encoding="utf-8") as fh:
@@ -2461,7 +2464,9 @@ def funding_mail_lines(rate, now_ms):
     eq_hist = st.get("equity") or [[now_ms, START_CAPITAL]]
     eq = eq_hist[-1][1]
     day_ago = next((e for t, e in reversed(eq_hist) if t <= now_ms - 86000 * 1000), eq_hist[0][1])
-    hour_tr = [t for t in st["trades"] if t["exit_ts"] >= now_ms - 3600 * 1000]
+    today0 = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+    n_today = sum(1 for t in st["trades"] if t["exit_ts"] >= today0) + sum(1 for p in st.get("pos", {}).values() if p.get("ts", 0) >= today0)
+    n_total = len(st["trades"]) + len(st.get("pos", {}))
     pos = st.get("pos", {})
     best = max(pos.items(), key=lambda x: x[1]["earned"]) if pos else None
     worst = min(pos.items(), key=lambda x: x[1]["earned"]) if pos else None
@@ -2474,7 +2479,7 @@ def funding_mail_lines(rate, now_ms):
     verb = "tjänat" if eq >= START_CAPITAL else "förlorat"
     coins = ", ".join(s.replace("USDT", "") for s in pos) or "inget – väntar på bra funding"
     return [f"**Bot 3 – samlar funding (neutral): har {kr(eq * rate)}** – har {verb} {kr(abs(eq - START_CAPITAL) * rate)} totalt ({pct_sv(eq / START_CAPITAL - 1)})  ",
-            f"Senaste dygnet: {kr((eq - day_ago) * rate, sign=True)} · Affärer senaste timmen: {len(hour_tr)} · Insamlat totalt: {kr(st.get('funding_total', 0) * rate, sign=True)}  ",
+            f"Senaste dygnet: {kr((eq - day_ago) * rate, sign=True)} · Affärer idag: {n_today} · totalt: {n_total} · Insamlat: {kr(st.get('funding_total', 0) * rate, sign=True)}  ",
             f"Bästa just nu: {t_txt(best)}  ",
             f"Sämsta just nu: {t_txt(worst)}  ",
             f"Samlar på: {coins}", ""]
