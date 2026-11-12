@@ -2236,7 +2236,7 @@ def write_mail_report(path=None):
         lines.append("")
     except Exception:
         pass
-    for fn, label in ((funding_mail_lines, "Bot 3"), (fast_mail_lines, "Bot 4"), (league_mail_lines, "Bot 5"), (chart_mail_lines, "Bot 6"), (gem_mail_lines, "Bot 7")):
+    for fn, label in ((funding_mail_lines, "Bot 3"), (fast_mail_lines, "Bot 4"), (league_mail_lines, "Bot 5"), (chart_mail_lines, "Bot 6"), (gem_mail_lines, "Bot 7"), (copy_mail_lines, "Bot 8")):
         try:
             lines += fn(rate, now_ms)
         except Exception as e:
@@ -2801,7 +2801,8 @@ ALL_BOTS = [("Bot 1", "Köper bara (trend)", "trend_state.json", "#3fb68b"),
             ("Bot 4", "Daytradern (handlar ofta)", "fast_state.json", "#f08a84"),
             ("Bot 5", "Lagledaren (fördelar mellan de andra)", "league_state.json", "#c39bff"),
             ("Bot 6", "Mönsterläsaren (läser grafen)", "chart_state.json", "#5fd3d3"),
-            ("Bot 7", "Myntjägaren (letar nästa 100x)", "gem_state.json", "#ffb36b")]
+            ("Bot 7", "Myntjägaren (letar nästa 100x)", "gem_state.json", "#ffb36b"),
+            ("Bot 8", "Kopieraren (härmar kända traders)", "copy_state.json", "#ff7eb6")]
 
 
 def _bot_data(fname, now_ms):
@@ -2870,6 +2871,9 @@ BOT_EXPLAIN = {
              "(för lite pengar i handeln, för nya, fler säljare än köpare). Köper pyttesmå lotter, 2 % var, i upp till 40 mynt. "
              "Vid 2x säljs hälften så insatsen är hemma; resten får springa tills den tappar 60 % från toppen. "
              "Ett lotteri med regler: de flesta lotter förlorar, en enda stor vinnare kan bära allt.",
+    "Bot 8": "Härmar kända memecoin-traders (Cented, Theo, West, Yugi) genom att läsa deras offentliga plånböcker på "
+             "Solana. När de köper för minst 2 SOL köper boten samma mynt för 1,5 % av pengarna; när de säljer säljer den samma "
+             "andel. Kommer alltid in lite efter dem och till sämre pris – det räknas med.",
     "Bot 6": "Läser graferna som en teknisk analytiker varje timme: utbrott med volym, dubbelbotten/-topp, trendstruktur "
              "och RSI-divergens. Stop-loss och vinstmål efter hur mycket myntet svänger. Lär sig: mönster som tjänar pengar live "
              "får större insats, mönster som förlorar mindre.",
@@ -2910,7 +2914,7 @@ def _with_open(f, st, trades):
                 fill = exit_price(lp.get(sym, p["avg"]), side)
                 back = p["margin"] * (1 - FEE) + p["qty"] * (fill - p["avg"]) - abs(p["qty"] * fill) * FEE
                 cost = p["margin"]
-            elif f == "gem_state.json":
+            elif f in ("gem_state.json", "copy_state.json"):
                 side = "long"
                 back = p["qty"] * p["price"] * (1 - _gem_cost(p["qty"] * p["price"], p["liq"]))
                 cost = p["cost"]
@@ -3574,6 +3578,220 @@ def gem_mail_lines(rate, now_ms):
             f"Bästa lott just nu: {best['name'] + ' ' + format(best['price'] / best['entry'], '.2f') + 'x' if best else 'inga än'}", ""]
 
 
+# ============================================================================
+# BOT 8: KOPIERAREN (härmar kända memecoin-traders plånböcker på Solana)
+# ============================================================================
+# Läser deras affärer direkt från blockkedjan (offentligt). När de köper ett mynt köper
+# boten samma mynt med en liten insats; när de säljer säljer boten samma andel.
+# Vi kommer alltid in lite senare och till sämre pris än dem - det räknas med.
+COPY_STATE_FILE = os.path.join(HERE, "copy_state.json")
+COPY_WALLETS = {   # namn: offentlig Solana-plånbok (från KOL-trackers)
+    "Cented": "CyaE1VxvBrahnPWkqm5VsdCvyS2QmNht2UFrKJHga54o",
+    "Theo": "Bi4rd5FH5bYEN8scZ7wevxNZyNmKHdaBcvewdPFxYdLt",
+    "West": "JDd3hy3gQn2V982mi1zqhNqUw1GfV2UL6g76STojCJPN",
+    "Yugi": "4TCMpxeevymUtCemwcVozhBLWq8Fikc1pVpfcW9zp66B",
+}
+COPY_STAKE = 0.015           # andel av pengarna per kopierat köp
+COPY_MIN_SOL = 2.0           # kopiera bara köp på minst 2 SOL (deras "riktiga" satsningar)
+COPY_MAX_POS = 30
+COPY_STOP = -0.70
+COPY_MAX_HOURS = 48
+SOL_RPC = "https://api.mainnet-beta.solana.com"
+WSOL = "So11111111111111111111111111111111111111112"
+STABLES = {"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"}
+
+
+def _rpc(method, params):
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
+    for i in range(3):
+        try:
+            req = urllib.request.Request(SOL_RPC, data=body, headers={"Content-Type": "application/json",
+                                                                      "User-Agent": "paper-bot/1.0"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                d = json.loads(r.read().decode())
+            if "error" in d:
+                raise RuntimeError(d["error"].get("message"))
+            return d["result"]
+        except Exception:
+            if i == 2:
+                raise
+            time.sleep(1.5 * (i + 1))
+
+
+def parse_swap(tx, wallet):
+    """(mint, 'buy'/'sell', sol_belopp, andel_såld) eller None."""
+    if not tx or tx["meta"].get("err"):
+        return None
+    keys = [k["pubkey"] if isinstance(k, dict) else k for k in tx["transaction"]["message"]["accountKeys"]]
+    if wallet not in keys:
+        return None
+    i = keys.index(wallet)
+    sol = (tx["meta"]["postBalances"][i] - tx["meta"]["preBalances"][i]) / 1e9
+    pre, post = {}, {}
+    for side, arr in ((pre, tx["meta"].get("preTokenBalances") or []), (post, tx["meta"].get("postTokenBalances") or [])):
+        for b in arr:
+            if b.get("owner") == wallet:
+                side[b["mint"]] = side.get(b["mint"], 0.0) + float(b["uiTokenAmount"].get("uiAmount") or 0)
+    sol += post.get(WSOL, 0.0) - pre.get(WSOL, 0.0)
+    best = None
+    for mint in set(pre) | set(post):
+        if mint == WSOL or mint in STABLES:
+            continue
+        d = post.get(mint, 0.0) - pre.get(mint, 0.0)
+        if abs(d) > 0 and (best is None or abs(d) > abs(best[1])):
+            best = (mint, d)
+    if not best:
+        return None
+    mint, d = best
+    if d > 0 and sol < 0:
+        return mint, "buy", -sol, 0.0
+    if d < 0 and sol > 0:
+        return mint, "sell", sol, min(1.0, -d / max(pre.get(mint, 0.0), 1e-12))
+    return None
+
+
+def _token_market(mint):
+    """(pris, likviditet, namn, url) från DexScreener."""
+    pairs = _dex(f"/tokens/v1/solana/{mint}") or []
+    if not pairs:
+        return None
+    p = max(pairs, key=lambda q: (q.get("liquidity") or {}).get("usd", 0) or 0)
+    price = float(p.get("priceUsd") or 0)
+    if price <= 0:
+        return None
+    liq = float((p.get("liquidity") or {}).get("usd") or 0) or max(5000.0, 0.2 * float(p.get("marketCap") or 0))
+    return price, liq, p["baseToken"]["symbol"][:12], p.get("url")
+
+
+def run_copy_watch(minutes=55):
+    st = None
+    if os.path.exists(COPY_STATE_FILE):
+        try:
+            with open(COPY_STATE_FILE, encoding="utf-8") as f:
+                st = json.load(f)
+        except Exception:
+            st = None
+    if not st:
+        st = {"start_ms": int(time.time() * 1000), "cash": START_CAPITAL, "pos": {}, "trades": [], "equity": [],
+              "last_sig": {}, "seen_kol": {}}
+        log("Kopieraren startar med 10 000 låtsas-USDT")
+    end = time.time() + minutes * 60
+    last_px = 0
+
+    def value(p):
+        return p["qty"] * p["price"] * (1 - _gem_cost(p["qty"] * p["price"], p["liq"]))
+
+    def equity():
+        return st["cash"] + sum(value(p) for p in st["pos"].values())
+
+    def sell(mint, frac, now, why):
+        p = st["pos"][mint]
+        got = value(p) * frac
+        cost = p["cost"] * frac
+        st["cash"] += got
+        st["trades"].append({"symbol": p["name"], "side": "long", "ret": got / cost - 1, "pnl": got - cost,
+                             "entry_ts": p["ts"], "exit_ts": now, "reason": why, "cost": cost, "kol": p["kol"],
+                             "url": p.get("url")})
+        st["trades"] = st["trades"][-5000:]
+        p["qty"] *= (1 - frac); p["cost"] -= cost
+        if frac >= 0.98 or p["cost"] < 1:
+            del st["pos"][mint]
+
+    def poll(kol, wallet, now):
+        last = st["last_sig"].get(kol)
+        opts = {"limit": 40}
+        if last:
+            opts["until"] = last
+        sigs = _rpc("getSignaturesForAddress", [wallet, opts])
+        if not sigs:
+            return
+        st["last_sig"][kol] = sigs[0]["signature"]
+        if not last:
+            return                                   # första gången: börja bevaka från nu
+        for s in reversed(sigs):
+            if s.get("err"):
+                continue
+            try:
+                tx = _rpc("getTransaction", [s["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}])
+                sw = parse_swap(tx, wallet)
+            except Exception:
+                continue
+            if not sw:
+                continue
+            mint, kind, sol_amt, frac = sw
+            st["seen_kol"][kol] = st["seen_kol"].get(kol, 0) + 1
+            if kind == "buy" and sol_amt >= COPY_MIN_SOL and mint not in st["pos"] and len(st["pos"]) < COPY_MAX_POS:
+                m = _token_market(mint)
+                if not m:
+                    continue
+                price, liq, name, url = m
+                eq = equity()
+                stake = min(eq * COPY_STAKE, st["cash"])
+                if stake < MIN_TRADE_USDT:
+                    continue
+                st["cash"] -= stake
+                st["pos"][mint] = {"name": f"{name} ({kol})", "kol": kol, "entry": price, "price": price, "liq": liq,
+                                   "qty": stake * (1 - _gem_cost(stake, liq)) / price, "cost": stake, "ts": now,
+                                   "url": url, "kol_sol": sol_amt}
+                log(f"  Kopieraren: {kol} köpte {name} för {sol_amt:.1f} SOL -> köper för {stake:.0f} USDT")
+            elif kind == "sell" and mint in st["pos"] and st["pos"][mint]["kol"] == kol:
+                p = st["pos"][mint]
+                m = _token_market(mint)
+                if m:
+                    p["price"], p["liq"] = m[0], m[1]
+                sell(mint, 1.0 if frac > 0.9 else frac, now, f"{kol} sålde {frac * 100:.0f} %")
+
+    while time.time() < end:
+        now = int(time.time() * 1000)
+        for kol, wallet in COPY_WALLETS.items():
+            try:
+                poll(kol, wallet, now)
+            except Exception as e:
+                log(f"  Kopieraren: kunde inte läsa {kol} ({e})")
+            time.sleep(1)
+        if time.time() - last_px > 60 and st["pos"]:
+            last_px = time.time()
+            for mint, p in list(st["pos"].items()):
+                try:
+                    m = _token_market(mint)
+                except Exception:
+                    m = None
+                if not m:
+                    continue
+                p["price"], p["liq"] = m[0], m[1]
+                r = p["price"] / p["entry"] - 1
+                if r <= COPY_STOP:
+                    sell(mint, 1.0, now, "stopp −70 %")
+                elif now - p["ts"] > COPY_MAX_HOURS * 3600000:
+                    sell(mint, 1.0, now, "48 timmar – släpper")
+        st["equity"].append([now, round(equity(), 2)])
+        st["equity"] = st["equity"][-6000:]
+        st["last_prices"] = {k: p["price"] for k, p in st["pos"].items()}
+        with open(COPY_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(st, f)
+        os.replace(COPY_STATE_FILE + ".tmp", COPY_STATE_FILE)
+        time.sleep(max(1.0, min(15.0, end - time.time())))
+    log(f"Kopieraren: {money(equity())} USDT, {len(st['pos'])} öppna, {len(st['trades'])} försäljningar")
+
+
+def copy_mail_lines(rate, now_ms):
+    if not os.path.exists(COPY_STATE_FILE):
+        return []
+    with open(COPY_STATE_FILE, encoding="utf-8") as f:
+        st = json.load(f)
+    eqh = st.get("equity") or [[now_ms, START_CAPITAL]]
+    eq = eqh[-1][1]
+    d24 = next((e for t, e in reversed(eqh) if t <= now_ms - 86000 * 1000), eqh[0][1])
+    per = {}
+    for t in st["trades"]:
+        per[t["kol"]] = per.get(t["kol"], 0.0) + t["pnl"]
+    verb = "tjänat" if eq >= START_CAPITAL else "förlorat"
+    who = ", ".join(f"{k} {kr(v * rate, sign=True)}" for k, v in sorted(per.items(), key=lambda x: -x[1])) or "inga avslutade än"
+    return [f"**Bot 8 – kopieraren: har {kr(eq * rate)}** – har {verb} {kr(abs(eq - START_CAPITAL) * rate)} totalt ({pct_sv(eq / START_CAPITAL - 1)})  ",
+            f"Senaste dygnet: {kr((eq - d24) * rate, sign=True)} · öppna: {len(st['pos'])} · försäljningar: {len(st['trades'])}  ",
+            f"Resultat per trader: {who}", ""]
+
+
 def run_trend_live(mode="long", once=False, watch_minutes=0):
     """Kör trendmodellen live med papperspengar. Kollar priser varje minut,
     ombalanserar en gång per dygn (när dagsljuset stänger, kl 01:00 svensk vintertid)."""
@@ -3885,6 +4103,8 @@ if __name__ == "__main__":
             run_self_improve(fake=len(args) > 1 and args[1] == "demo")
         elif mode == "trendwatch":  # molnet: en körning + bevaka varje sekund i N minuter
             run_trend_live(args[1], once=True, watch_minutes=float(args[2]) if len(args) > 2 else 55)
+        elif mode == "copywatch":
+            run_copy_watch(float(args[1]) if len(args) > 1 else 55)
         elif mode == "gemwatch":
             run_gem_watch(float(args[1]) if len(args) > 1 else 55)
         elif mode == "fastwatch":
