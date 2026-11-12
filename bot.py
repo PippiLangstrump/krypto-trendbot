@@ -2823,6 +2823,31 @@ def _mini_svg(points, rate, color):
             f'<text x="{W - 4}" y="{H - 4}" fill="#999" font-size="12" text-anchor="end">lägst {kr(min(ys))}</text></svg>')
 
 
+def _with_open(f, st, trades):
+    """Avslutade affärer + öppna positioner värderade till senaste pris (markerade 'pågår')."""
+    out = [dict(t) for t in trades]
+    lp = st.get("last_prices", {})
+    now = int(time.time() * 1000)
+    for sym, p in st.get("pos", {}).items():
+        try:
+            if f.startswith("trend_state"):
+                side = "long" if p["qty"] > 0 else "short"
+                fill = exit_price(lp.get(sym, p["avg"]), side)
+                back = p["margin"] * (1 - FEE) + p["qty"] * (fill - p["avg"]) - abs(p["qty"] * fill) * FEE
+                cost = p["margin"]
+            elif f == "funding_state.json":
+                side, back, cost = "carry", p["margin"] + p["earned"], p["margin"]
+            else:
+                side = p["side"]
+                back = trade_value(p["cost"], p["entry"], exit_price(lp.get(sym, p["entry"]), side), side)
+                cost = p["cost"]
+            out.append({"symbol": sym, "side": side, "ret": back / cost - 1, "pnl": back - cost, "exit_ts": p.get("ts", now),
+                        "reason": "pågår", "pattern": p.get("pattern"), "open": True})
+        except Exception:
+            continue
+    return out
+
+
 def _trade_rows(trs, rate):
     rows = ""
     for t in trs:
@@ -2872,6 +2897,7 @@ def write_dashboard():
         tot = d["eq"] - START_CAPITAL
         st = d["st"]
         pos = st.get("pos", {})
+        allt = _with_open(f, st, d["trades"])
         if f == "league_state.json":
             extra = "Fördelning: " + ", ".join(f"{k} {v * 100:.0f} %" for k, v in st.get("weights", {}).items())
         elif f == "funding_state.json":
@@ -2885,10 +2911,10 @@ def write_dashboard():
 <details><summary class="name">{n} – {desc} <span class="info">ⓘ tryck för mer</span></summary>
 <div class="explain">{_h.escape(BOT_EXPLAIN.get(n, ""))}</div>
 <div class="sub">Historik</div>{_mini_svg(d['eqh'], rate, c)}
-{('<div class="sub">Bästa affärerna</div><table>' + _trade_rows(sorted(d['trades'], key=lambda t: -t['pnl'])[:5], rate) + '</table>'
-  '<div class="sub">Sämsta affärerna</div><table>' + _trade_rows(sorted(d['trades'], key=lambda t: t['pnl'])[:5], rate) + '</table>'
-  '<div class="sub">Alla affärer (senaste först)</div><div class="scroll"><table>' + _trade_rows(sorted(d['trades'], key=lambda t: -t.get('exit_ts', 0))[:100], rate) + '</table></div>')
- if d['trades'] else '<div class="small">Inga avslutade affärer än.</div>'}
+{('<div class="sub">Bästa affärerna (även pågående)</div><table>' + _trade_rows(sorted([t for t in allt if t['pnl'] >= 0], key=lambda t: -t['pnl'])[:5], rate) + '</table>'
+  '<div class="sub">Sämsta affärerna (även pågående)</div><table>' + _trade_rows(sorted([t for t in allt if t['pnl'] < 0], key=lambda t: t['pnl'])[:5], rate) + '</table>'
+  '<div class="sub">Alla affärer (pågående först, sen senaste)</div><div class="scroll"><table>' + _trade_rows(sorted(allt, key=lambda t: (not t.get('open'), -t.get('exit_ts', 0)))[:100], rate) + '</table></div>')
+ if allt else '<div class="small">Inga affärer än.</div>'}
 </details>
 <div class="big">{kr(d['eq'] * rate)}</div>
 <div class="{'pos' if tot >= 0 else 'neg'}">{kr(tot * rate, sign=True)} totalt ({pct_sv(d['eq'] / START_CAPITAL - 1)})</div>
