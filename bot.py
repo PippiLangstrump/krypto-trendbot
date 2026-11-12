@@ -2768,6 +2768,20 @@ def write_morning_report(path=None):
         f.write("\n".join(lines) + "\n")
 
 
+BOT_EXPLAIN = {
+    "Bot 1": "Köper mynt som har stigit de senaste veckorna och säljer när trenden vänder. Kollar trenderna en gång per dygn (kl 01). "
+             "Står i kontanter när inget mynt stiger. Har stop-loss som kollas varje sekund, och nyhetsvakt.",
+    "Bot 2": "Som Bot 1, men kan också blanka: satsar på att mynt som fallit i flera veckor fortsätter falla. "
+             "Kan alltså tjäna både när marknaden går upp och ner. Handlar en gång per dygn, stop-loss varje sekund.",
+    "Bot 3": "Köper ett mynt och blankar samma mynt samtidigt, så prisrörelser tar ut varandra. Tjänar på avgiften som "
+             "hävstångstraders betalar var 8:e timme (kl 01, 09, 17). Små men jämna intäkter.",
+    "Bot 4": "Experiment som handlar hela tiden: hoppar på mynt som rört sig mer än 0,3 % på 5 minuter och säljer vid +0,5 %, "
+             "−0,3 % eller efter 15 minuter. Visar hur mycket avgifterna kostar när man handlar ofta.",
+    "Bot 5": "Handlar inte själv. Fördelar sina pengar mellan Bot 1–4 och flyttar varje vecka mer pengar till de botar som "
+             "tjänat mest live senaste veckan (minst 10 % kvar i varje).",
+}
+
+
 def write_dashboard():
     import html as _h
     now_ms = int(time.time() * 1000)
@@ -2814,7 +2828,7 @@ def write_dashboard():
         else:
             extra = "Äger/blankar: " + (", ".join(s.replace("USDT", "") + (" ↑" if p.get("qty", 1) > 0 else " ↓") for s, p in pos.items()) or "inget")
         cards += f"""<div class="card" style="border-left:4px solid {c}">
-<div class="name">{n} – {desc}</div>
+<details><summary class="name">{n} – {desc} <span class="info">ⓘ</span></summary><div class="explain">{_h.escape(BOT_EXPLAIN.get(n, ""))}</div></details>
 <div class="big">{kr(d['eq'] * rate)}</div>
 <div class="{'pos' if tot >= 0 else 'neg'}">{kr(tot * rate, sign=True)} totalt ({pct_sv(d['eq'] / START_CAPITAL - 1)})</div>
 <div class="small">Senaste dygnet: <span class="{'pos' if d['eq'] >= d['d24'] else 'neg'}">{kr((d['eq'] - d['d24']) * rate, sign=True)}</span> · affärer 24 h: {len(d['t24'])} · totalt: {len(d['trades'])}</div>
@@ -2844,7 +2858,8 @@ h1{{font-size:22px;margin:4px 0}} h2{{font-size:16px;color:#bbb;margin:22px 0 8p
 .card{{background:#181b22;border-radius:10px;padding:12px 14px;margin:10px 0;position:relative}} .rank{{position:absolute;right:14px;top:10px;color:#666;font-size:20px}}
 .name{{font-size:14px;color:#ccc}} .big{{font-size:24px;font-weight:600;margin:4px 0}} .pos{{color:#3fb68b}} .neg{{color:#e5534b}}
 .box{{background:#181b22;border-radius:10px;padding:10px}} table{{width:100%;border-collapse:collapse;font-size:13px}} td{{padding:6px;border-bottom:1px solid #262a33}}
-.legend span{{margin-right:12px;font-size:12px}} ul{{padding-left:18px;font-size:13px;color:#bbb}}</style></head><body>
+.legend span{{margin-right:12px;font-size:12px}} summary{{cursor:pointer;list-style:none}} summary::-webkit-details-marker{{display:none}}
+.info{{color:#7cb7ff;font-size:13px}} .explain{{background:#11141a;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;color:#ccc;line-height:1.45}} ul{{padding-left:18px;font-size:13px;color:#bbb}}</style></head><body>
 <h1>📈 Kryptobotarna</h1><div class="muted">Låtsaspengar, riktiga priser · uppdaterad {_se_now().strftime('%d/%m %H:%M')} · laddar om var 5:e minut</div>
 <h2>Alla botar – % sedan start</h2><div class="box">{svg}<div class="legend">{''.join(f"<span style='color:{c}'>● {n}</span>" for n, _, _, c, _ in data)}</div></div>
 <h2>Botarna</h2>{cards}
