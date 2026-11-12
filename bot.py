@@ -2900,6 +2900,15 @@ def write_dashboard():
         st = d["st"]
         pos = st.get("pos", {})
         allt = _with_open(f, st, d["trades"])
+        fee_line = ""
+        open_tr = [t for t in allt if t.get("open")]
+        if open_tr and "cash" in st:
+            if_sold = st["cash"] + sum(t["pnl"] for t in open_tr) + sum(
+                (p.get("margin") or p.get("cost") or 0) for p in pos.values())
+            fee = d["eq"] - if_sold
+            if fee > 0:
+                fee_line = (f"<div class='tiny'>Om allt såldes nu: {kr(if_sold * rate)} "
+                            f"(säljavgift + slippage ≈ {kr(-fee * rate, sign=True)})</div>")
         if f == "league_state.json":
             extra = "Fördelning: " + ", ".join(f"{k} {v * 100:.0f} %" for k, v in st.get("weights", {}).items())
         elif f == "funding_state.json":
@@ -2921,7 +2930,7 @@ def write_dashboard():
 <div class="big">{kr(d['eq'] * rate)}</div>
 <div class="{'pos' if tot >= 0 else 'neg'}">{kr(tot * rate, sign=True)} totalt ({pct_sv(d['eq'] / START_CAPITAL - 1)})</div>
 <div class="small">Senaste dygnet: <span class="{'pos' if d['eq'] >= d['d24'] else 'neg'}">{kr((d['eq'] - d['d24']) * rate, sign=True)}</span> · öppna affärer: {len(pos)} · avslutade: {len(d['trades'])}</div>
-<div class="small">{_h.escape(extra)}</div></div>"""
+<div class="small">{_h.escape(extra)}</div>{fee_line}</div>"""
     trades = []
     for n, _, _, c, d in data:
         for t in d["trades"][-30:]:
@@ -2949,7 +2958,7 @@ h1{{font-size:22px;margin:4px 0}} h2{{font-size:16px;color:#bbb;margin:22px 0 8p
 .box{{background:#181b22;border-radius:10px;padding:10px}} table{{width:100%;border-collapse:collapse;font-size:13px}} td{{padding:6px;border-bottom:1px solid #262a33}}
 .legend span{{margin-right:12px;font-size:12px}} summary{{cursor:pointer;list-style:none}} summary::-webkit-details-marker{{display:none}}
 .info{{color:#7cb7ff;font-size:12px}} .sub{{color:#bbb;font-size:13px;font-weight:600;margin:12px 0 4px}}
-.scroll{{max-height:260px;overflow-y:auto}} .b{{font-size:11px;padding:2px 6px;border-radius:8px;white-space:nowrap}} .b.open{{background:#173b2e;color:#5fd3a5}} .b.done{{background:#2a2e38;color:#aaa}} details table td{{font-size:12px;padding:4px}} .explain{{background:#11141a;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;color:#ccc;line-height:1.45}} ul{{padding-left:18px;font-size:13px;color:#bbb}}</style></head><body>
+.scroll{{max-height:260px;overflow-y:auto}} .tiny{{color:#888;font-size:11px;margin-top:3px}} .b{{font-size:11px;padding:2px 6px;border-radius:8px;white-space:nowrap}} .b.open{{background:#173b2e;color:#5fd3a5}} .b.done{{background:#2a2e38;color:#aaa}} details table td{{font-size:12px;padding:4px}} .explain{{background:#11141a;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;color:#ccc;line-height:1.45}} ul{{padding-left:18px;font-size:13px;color:#bbb}}</style></head><body>
 <h1>📈 Kryptobotarna</h1><div class="muted">Låtsaspengar, riktiga priser · uppdaterad {_se_now().strftime('%d/%m %H:%M')} · laddar om var 5:e minut</div>
 <h2>Alla botar – % sedan start</h2><div class="box">{svg}<div class="legend">{''.join(f"<span style='color:{c}'>● {n}</span>" for n, _, _, c, _ in data)}</div></div>
 <h2>Botarna</h2>{cards}
