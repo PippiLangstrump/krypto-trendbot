@@ -3953,6 +3953,9 @@ def news9_match(title, markets):
             hit = True
         elif len(sym) >= 3 and re.search(r"(\(|\$)" + re.escape(sym) + r"\b", title):
             hit = True
+        px = m.get("current_price") or 0
+        if "usd" in sym.lower() or "usd" in name or 0.97 <= px <= 1.03:
+            continue                                  # stablecoins/fonder i dollar stiger aldrig på nyheter
         if hit and (best is None or rank < (best.get("market_cap_rank") or 99999)):
             best = m
     return best
