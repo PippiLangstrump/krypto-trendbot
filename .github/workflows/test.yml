@@ -18,22 +18,21 @@ jobs:
       - run: |
           python - <<'PY'
           import bot, time
-          for kol, w in bot.COPY_WALLETS.items():
-              try:
-                  sigs = bot._rpc("getSignaturesForAddress", [w, {"limit": 200}])
-                  ok = [x for x in sigs if not x.get("err")]
-                  n = 0
-                  for sg in ok[:8]:
-                      tx = bot._rpc("getTransaction", [sg["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}])
-                      sw = bot.parse_swap(tx, w)
-                      if sw:
-                          n += 1
-                          if n <= 2:
-                              print("  SWAP", kol, sw[1], round(sw[2], 2), "SOL", round(sw[3], 2))
-                      time.sleep(0.5)
-                  age = (time.time() - ok[0]["blockTime"]) / 3600 if ok else None
-                  print("KOL", kol, "sig", len(sigs), "ok", len(ok), "swappar i 8 senaste", n, "senaste ok (h sedan)", age and round(age, 1))
-              except Exception as e:
-                  print("KOL", kol, "FEL", e)
-              time.sleep(1)
+          for kol in ("Cented", "Theo", "Kev"):
+              w = bot.COPY_WALLETS[kol]
+              sigs = bot._rpc("getSignaturesForAddress", [w, {"limit": 1000}])
+              ok = [x for x in sigs if not x.get("err")]
+              span = (sigs[0]["blockTime"] - sigs[-1]["blockTime"]) if sigs else 0
+              print("SPAN", kol, len(sigs), "sig på", span, "s, ok", len(ok))
+              for sg in ok[:3]:
+                  tx = bot._rpc("getTransaction", [sg["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}])
+                  raw = tx["transaction"]["message"]["accountKeys"]
+                  keys = [k["pubkey"] for k in raw]
+                  i = keys.index(w)
+                  m = tx["meta"]
+                  print("  OK", kol, "signer", raw[i].get("signer"), "idx", i, "sol", (m["postBalances"][i] - m["preBalances"][i]) / 1e9,
+                        "tok", [(x.get("owner", "")[:5], x["mint"][:5], x["uiTokenAmount"].get("uiAmount")) for x in (m.get("postTokenBalances") or []) if x.get("owner") == w][:3],
+                        "pre", [(x["mint"][:5], x["uiTokenAmount"].get("uiAmount")) for x in (m.get("preTokenBalances") or []) if x.get("owner") == w][:3],
+                        "logs", [l[8:40] for l in (m.get("logMessages") or [])][:3])
+                  time.sleep(0.5)
           PY
