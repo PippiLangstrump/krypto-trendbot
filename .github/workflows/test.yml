@@ -17,16 +17,28 @@ jobs:
           python-version: "3.12"
       - run: |
           python - <<'PY'
-          import bot, time, json
-          calls = [0]
-          orig = bot._rpc
-          def counting(m, p):
-              calls[0] += 1
-              return orig(m, p)
-          bot._rpc = counting
-          bot.COPY_STATE_FILE = "/tmp/copy.json"
-          t = time.time()
-          bot.run_copy_watch(2)
-          st = json.load(open("/tmp/copy.json"))
-          print("RESULTAT anrop", calls[0], "på", round(time.time() - t), "s, per plånbok/s", round(calls[0] / 10 / (time.time() - t), 2), "köp", len(st["pos"]), [p["name"] for p in st["pos"].values()], "sett", st["seen_kol"])
+          import time, json, urllib.request
+          W = "CyaE1VxvBrahnPWkqm5VsdCvyS2QmNht2UFrKJHga54o"
+          for url in ("https://api.mainnet-beta.solana.com", "https://solana-rpc.publicnode.com", "https://solana.drpc.org", "https://rpc.ankr.com/solana"):
+              ok = err = 0; lat = []
+              last = None
+              t0 = time.time()
+              while time.time() - t0 < 20:
+                  opts = {"limit": 1000}
+                  if last: opts["until"] = last
+                  body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "getSignaturesForAddress", "params": [W, opts]}).encode()
+                  t1 = time.time()
+                  try:
+                      req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", "User-Agent": "paper-bot/1.0"})
+                      with urllib.request.urlopen(req, timeout=10) as r:
+                          d = json.loads(r.read().decode())
+                      if "error" in d: raise RuntimeError(str(d["error"])[:80])
+                      res = d["result"]
+                      if res: last = res[0]["signature"]
+                      ok += 1; lat.append(time.time() - t1)
+                  except Exception as e:
+                      err += 1
+                      if err <= 2: print("  ERR", url, str(e)[:100])
+                  time.sleep(0.5)
+              print("RPC", url, "ok", ok, "fel", err, "svarstid", round(sum(lat) / len(lat), 2) if lat else None)
           PY
