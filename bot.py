@@ -2224,6 +2224,10 @@ def write_mail_report(path=None):
     except Exception:
         pass
     try:
+        lines += league_mail_lines(rate, now_ms)
+    except Exception as e:
+        lines.append(f"Bot 5: kunde inte läsa läget ({e})")
+    try:
         lines += fast_mail_lines(rate, now_ms)
     except Exception as e:
         lines.append(f"Bot 4: kunde inte läsa läget ({e})")
@@ -2622,6 +2626,88 @@ def fast_mail_lines(rate, now_ms):
             f"Öppna just nu: {', '.join(s.replace('USDT', '') + (' (köpt)' if p['side'] == 'long' else ' (blankat)') for s, p in st['pos'].items()) or 'inga'}", ""]
 
 
+# ============================================================================
+# BOT 5: LAGLEDAREN (strategiliga) - fördelar pengar mellan bot 1-4 efter live-resultat
+# ============================================================================
+LEAGUE_FILE = os.path.join(HERE, "league_state.json")
+LEAGUE_MEMBERS = {"Bot 1": "trend_state.json", "Bot 2": "trend_state_langkort.json",
+                  "Bot 3": "funding_state.json", "Bot 4": "fast_state.json"}
+LEAGUE_MIN = 0.10
+
+
+def _last_equity(fname):
+    p = os.path.join(HERE, fname)
+    if not os.path.exists(p):
+        return None, []
+    with open(p, encoding="utf-8") as f:
+        eq = json.load(f).get("equity") or []
+    return (eq[-1][1] if eq else None), eq
+
+
+def run_league():
+    now = int(time.time() * 1000)
+    st = None
+    if os.path.exists(LEAGUE_FILE):
+        with open(LEAGUE_FILE, encoding="utf-8") as f:
+            st = json.load(f)
+    cur = {n: _last_equity(f)[0] for n, f in LEAGUE_MEMBERS.items()}
+    if not st:
+        n = len(LEAGUE_MEMBERS)
+        st = {"start_ms": now, "equity": [[now, START_CAPITAL]], "weights": {k: 1 / n for k in LEAGUE_MEMBERS},
+              "last_seen": cur, "last_rebal": now, "log": []}
+        log("Lagledaren startar: lika mycket i varje bot")
+    else:
+        # dagens avkastning = viktad summa av varje bots avkastning sedan förra körningen
+        r = 0.0
+        for k, w in st["weights"].items():
+            a, b = st["last_seen"].get(k), cur.get(k)
+            if a and b:
+                r += w * (b / a - 1)
+        eq = st["equity"][-1][1] * (1 + r)
+        st["equity"].append([now, round(eq, 2)])
+        st["equity"] = st["equity"][-6000:]
+        # vikterna driver med resultaten
+        tot = sum(st["weights"][k] * ((cur[k] / st["last_seen"][k]) if cur.get(k) and st["last_seen"].get(k) else 1)
+                  for k in st["weights"])
+        st["weights"] = {k: st["weights"][k] * ((cur[k] / st["last_seen"][k]) if cur.get(k) and st["last_seen"].get(k) else 1) / tot
+                         for k in st["weights"]}
+        st["last_seen"] = cur
+    # måndagar (eller 7 dagar sedan senast): ny fördelning efter senaste veckans live-resultat
+    if now - st["last_rebal"] >= 7 * 86400000:
+        score = {}
+        for k, f in LEAGUE_MEMBERS.items():
+            last, hist = _last_equity(f)
+            base = next((e for t, e in hist if t >= now - 7 * 86400000), None)
+            score[k] = max(0.0, (last / base - 1)) if last and base else 0.0
+        tot = sum(score.values())
+        raw = {k: (score[k] / tot if tot > 0 else 1 / len(score)) for k in score}
+        raw = {k: max(LEAGUE_MIN, v) for k, v in raw.items()}
+        z = sum(raw.values())
+        st["weights"] = {k: v / z for k, v in raw.items()}
+        cost = 0.002   # ungefärlig kostnad för att flytta pengar mellan botarna
+        st["equity"][-1][1] = round(st["equity"][-1][1] * (1 - cost), 2)
+        msg = "Ny fördelning efter veckans live-resultat: " + ", ".join(f"{k} {v * 100:.0f} %" for k, v in st["weights"].items())
+        st["log"] = (st.get("log", []) + [[now, msg]])[-20:]
+        st["last_rebal"] = now
+        log(msg)
+    with open(LEAGUE_FILE, "w", encoding="utf-8") as f:
+        json.dump(st, f)
+
+
+def league_mail_lines(rate, now_ms):
+    if not os.path.exists(LEAGUE_FILE):
+        return []
+    with open(LEAGUE_FILE, encoding="utf-8") as f:
+        st = json.load(f)
+    eq = st["equity"][-1][1]
+    day_ago = next((e for t, e in reversed(st["equity"]) if t <= now_ms - 86000 * 1000), st["equity"][0][1])
+    verb = "tjänat" if eq >= START_CAPITAL else "förlorat"
+    w = ", ".join(f"{k} {v * 100:.0f} %" for k, v in st["weights"].items())
+    nxt = fmt_ts(st["last_rebal"] + 7 * 86400000 + 3600000)[:10]
+    return [f"**Bot 5 – lagledaren (fördelar mellan bot 1–4): har {kr(eq * rate)}** – har {verb} {kr(abs(eq - START_CAPITAL) * rate)} totalt ({pct_sv(eq / START_CAPITAL - 1)})  ",
+            f"Senaste dygnet: {kr((eq - day_ago) * rate, sign=True)} · Fördelning: {w} · nästa omfördelning {nxt}", ""]
+
+
 def run_trend_live(mode="long", once=False, watch_minutes=0):
     """Kör trendmodellen live med papperspengar. Kollar priser varje minut,
     ombalanserar en gång per dygn (när dagsljuset stänger, kl 01:00 svensk vintertid)."""
@@ -2927,6 +3013,8 @@ if __name__ == "__main__":
             run_trend_live(args[1], once=True, watch_minutes=float(args[2]) if len(args) > 2 else 55)
         elif mode == "fastwatch":
             run_fast_watch(float(args[1]) if len(args) > 1 else 55)
+        elif mode == "league":
+            run_league()
         elif mode == "fundingonce":
             run_funding_once()
         elif mode == "mailrapport":

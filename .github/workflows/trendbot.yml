@@ -34,6 +34,7 @@ jobs:
           python bot.py fastwatch $M &
           wait
           python bot.py fundingonce || echo "Funding-boten misslyckades denna gång"
+          python bot.py league || echo "Lagledaren misslyckades denna gång"
           python bot.py mailrapport
       - name: Spara resultat
         run: |
