@@ -2915,7 +2915,7 @@ def write_dashboard():
 <div class="sub">Historik</div>{_mini_svg(d['eqh'], rate, c)}
 {('<div class="sub">Bästa affärerna (även pågående)</div><table>' + _trade_rows(sorted([t for t in allt if t['pnl'] >= 0], key=lambda t: -t['pnl'])[:5], rate) + '</table>'
   '<div class="sub">Sämsta affärerna (även pågående)</div><table>' + _trade_rows(sorted([t for t in allt if t['pnl'] < 0], key=lambda t: t['pnl'])[:5], rate) + '</table>'
-  '<div class="sub">Alla affärer (pågående först, sen senaste)</div><div class="scroll"><table>' + _trade_rows(sorted(allt, key=lambda t: (not t.get('open'), -t.get('exit_ts', 0)))[:100], rate) + '</table></div>')
+  '<div class="sub">Alla affärer (' + str(len(allt)) + ' st – öppna först, sen senaste)</div><div class="scroll"><table>' + _trade_rows(sorted(allt, key=lambda t: (not t.get('open'), -t.get('exit_ts', 0)))[:2000], rate) + '</table></div>')
  if allt else '<div class="small">Inga affärer än.</div>'}
 </details>
 <div class="big">{kr(d['eq'] * rate)}</div>
