@@ -2236,7 +2236,7 @@ def write_mail_report(path=None):
         lines.append("")
     except Exception:
         pass
-    for fn, label in ((funding_mail_lines, "Bot 3"), (fast_mail_lines, "Bot 4"), (league_mail_lines, "Bot 5"), (chart_mail_lines, "Bot 6")):
+    for fn, label in ((funding_mail_lines, "Bot 3"), (fast_mail_lines, "Bot 4"), (league_mail_lines, "Bot 5"), (chart_mail_lines, "Bot 6"), (gem_mail_lines, "Bot 7")):
         try:
             lines += fn(rate, now_ms)
         except Exception as e:
@@ -2800,7 +2800,8 @@ ALL_BOTS = [("Bot 1", "Köper bara (trend)", "trend_state.json", "#3fb68b"),
             ("Bot 3", "Samlar funding (neutral)", "funding_state.json", "#e8c96a"),
             ("Bot 4", "Daytradern (handlar ofta)", "fast_state.json", "#f08a84"),
             ("Bot 5", "Lagledaren (fördelar mellan de andra)", "league_state.json", "#c39bff"),
-            ("Bot 6", "Mönsterläsaren (läser grafen)", "chart_state.json", "#5fd3d3")]
+            ("Bot 6", "Mönsterläsaren (läser grafen)", "chart_state.json", "#5fd3d3"),
+            ("Bot 7", "Myntjägaren (letar nästa 100x)", "gem_state.json", "#ffb36b")]
 
 
 def _bot_data(fname, now_ms):
@@ -2865,6 +2866,10 @@ BOT_EXPLAIN = {
              "sekundpriserna och handlar bara med trenden: köper rekyler och utbrott i upptrend, blankar i nedtrend. "
              "Varje affär riskerar 0,75 % av pengarna. Inget fast vinstmål: släpande stopp låter vinnarna springa, "
              "förlorare kapas snabbt. Pausar ett mynt 30 min efter förlust och slutar för dagen vid −3 %.",
+    "Bot 7": "Letar nästa Bitcoin bland nya småmynt på DexScreener var 15:e minut. Sorterar bort skräp och bedrägerier "
+             "(för lite pengar i handeln, för nya, fler säljare än köpare). Köper pyttesmå lotter, 2 % var, i upp till 40 mynt. "
+             "Vid 2x säljs hälften så insatsen är hemma; resten får springa tills den tappar 60 % från toppen. "
+             "Ett lotteri med regler: de flesta lotter förlorar, en enda stor vinnare kan bära allt.",
     "Bot 6": "Läser graferna som en teknisk analytiker varje timme: utbrott med volym, dubbelbotten/-topp, trendstruktur "
              "och RSI-divergens. Stop-loss och vinstmål efter hur mycket myntet svänger. Lär sig: mönster som tjänar pengar live "
              "får större insats, mönster som förlorar mindre.",
@@ -2905,6 +2910,11 @@ def _with_open(f, st, trades):
                 fill = exit_price(lp.get(sym, p["avg"]), side)
                 back = p["margin"] * (1 - FEE) + p["qty"] * (fill - p["avg"]) - abs(p["qty"] * fill) * FEE
                 cost = p["margin"]
+            elif f == "gem_state.json":
+                side = "long"
+                back = p["qty"] * p["price"] * (1 - _gem_cost(p["qty"] * p["price"], p["liq"]))
+                cost = p["cost"]
+                sym = p["name"]
             elif f == "funding_state.json":
                 side, back, cost = "carry", p["margin"] + p["earned"] - fund_cost(p["notional"]), p["margin"]
             else:
@@ -3338,6 +3348,220 @@ def chart_mail_lines(rate, now_ms):
             f"Mönstrens betyg (lärt sig hittills): {grades or 'inga avslutade affärer än'}", ""]
 
 
+# ============================================================================
+# BOT 7: MYNTJÄGAREN (letar nästa 100x bland nya småmynt - lotteri med regler)
+# ============================================================================
+# Skannar DexScreener var 15:e minut (nya och trendande mynt på Solana, Base, BSC, Ethereum).
+# Sorterar bort skräp: för lite pengar i handeln, för nya, redan uppblåsta, fler säljare än köpare.
+# Köper pyttesmå lotter (2 % av startkapitalet) i många mynt. Vid 2x säljs hälften
+# (insatsen tillbaka), resten är en "månbiljett" som får springa tills den faller 60 % från toppen.
+# Förlorare: säljs vid -50 %, eller efter 7 dagar utan vinst. Försvinner pengarna ur
+# handeln (rugg) räknas nästan allt som förlorat. Avgifter + prispåverkan räknas efter
+# hur lite pengar som finns i myntets handel - små mynt är dyra att handla.
+GEM_STATE_FILE = os.path.join(HERE, "gem_state.json")
+GEM_CHAINS = ("solana", "base", "bsc", "ethereum")
+GEM_STAKE = 0.02 * START_CAPITAL
+GEM_MAX_POS = 40
+GEM_MIN_LIQ, GEM_MIN_VOL24 = 50_000, 200_000
+GEM_MIN_AGE_H, GEM_MAX_AGE_D = 6, 30
+GEM_MAX_FDV = 50_000_000
+GEM_FEE = 0.003              # DEX-avgift per köp/sälj
+GEM_STOP = -0.50
+GEM_TRAIL = 0.60
+GEM_MAX_DAYS = 7
+GEM_SCAN_MIN = 15
+DEX = "https://api.dexscreener.com"
+
+
+def _dex(path):
+    return json.loads(fetch_text(DEX + path, timeout=20))
+
+
+def _gem_cost(usd, liq):
+    """Avgift + prispåverkan (andel) för att handla usd dollar i ett mynt med liq dollar likviditet."""
+    return min(0.9, GEM_FEE + 0.002 + 2 * usd / max(liq, 1.0))   # AMM: påverkan ≈ 2 × affär / likviditet
+
+
+def gem_candidates(now_ms):
+    toks = {}
+    for path in ("/token-profiles/latest/v1", "/token-boosts/latest/v1", "/token-boosts/top/v1"):
+        try:
+            for t in _dex(path):
+                if t.get("chainId") in GEM_CHAINS and t.get("tokenAddress"):
+                    toks.setdefault(t["chainId"], set()).add(t["tokenAddress"])
+        except Exception as e:
+            log(f"  Myntjägaren: kunde inte läsa {path} ({e})")
+    pairs = []
+    for chain, addrs in toks.items():
+        addrs = sorted(addrs)
+        for i in range(0, len(addrs), 30):
+            try:
+                pairs += _dex(f"/tokens/v1/{chain}/{','.join(addrs[i:i + 30])}") or []
+            except Exception:
+                continue
+    best = {}
+    for p in pairs:                                   # bästa paret per mynt (mest likviditet)
+        key = (p.get("chainId"), (p.get("baseToken") or {}).get("address"))
+        if (p.get("liquidity") or {}).get("usd", 0) > (best.get(key, {}).get("liquidity") or {}).get("usd", -1):
+            best[key] = p
+    out = []
+    for p in best.values():
+        try:
+            liq = float(p["liquidity"]["usd"]); vol = float(p["volume"]["h24"]); price = float(p["priceUsd"])
+            age_h = (now_ms - int(p["pairCreatedAt"])) / 3.6e6
+            fdv = float(p.get("fdv") or p.get("marketCap") or 0)
+            h1 = p["txns"]["h1"]; buys, sells = h1["buys"], h1["sells"]
+            ch1, ch24 = float(p["priceChange"].get("h1", 0)), float(p["priceChange"].get("h24", 0))
+            quote = (p.get("quoteToken") or {}).get("symbol", "")
+        except Exception:
+            continue
+        if (liq < GEM_MIN_LIQ or vol < GEM_MIN_VOL24 or not (GEM_MIN_AGE_H <= age_h <= GEM_MAX_AGE_D * 24)
+                or not (0 < fdv <= GEM_MAX_FDV) or fdv / liq > 60 or buys + sells < 100
+                or buys < sells * 1.15 or ch1 <= 0 or not (0 < ch24 < 300) or price <= 0
+                or quote not in ("SOL", "WETH", "ETH", "WBNB", "BNB", "USDC", "USDT")):
+            continue
+        score = min(vol / liq, 20) * (buys / max(sells, 1)) * (1 + min(ch1, 50) / 100)
+        out.append((score, p))
+    out.sort(key=lambda x: -x[0])
+    return [p for _s, p in out]
+
+
+def run_gem_watch(minutes=55):
+    st = None
+    if os.path.exists(GEM_STATE_FILE):
+        try:
+            with open(GEM_STATE_FILE, encoding="utf-8") as f:
+                st = json.load(f)
+        except Exception:
+            st = None
+    if not st:
+        st = {"start_ms": int(time.time() * 1000), "cash": START_CAPITAL, "pos": {}, "trades": [], "equity": [],
+              "seen": {}, "last_scan": 0}
+        log("Myntjägaren startar med 10 000 låtsas-USDT")
+    end = time.time() + minutes * 60
+    last_upd = 0
+
+    def value(p):
+        return p["qty"] * p["price"] * (1 - _gem_cost(p["qty"] * p["price"], p["liq"]))
+
+    def equity():
+        return st["cash"] + sum(value(p) for p in st["pos"].values())
+
+    def sell(key, frac, now, why, rug=False):
+        p = st["pos"][key]
+        got = value(p) * frac * (0.3 if rug else 1.0)
+        cost = p["cost"] * frac
+        st["cash"] += got
+        st["trades"].append({"symbol": p["name"], "side": "long", "ret": got / cost - 1, "pnl": got - cost,
+                             "entry_ts": p["ts"], "exit_ts": now, "reason": why, "cost": cost, "chain": p["chain"],
+                             "url": p.get("url")})
+        st["trades"] = st["trades"][-5000:]
+        p["qty"] *= (1 - frac); p["cost"] -= cost
+        if frac >= 0.999:
+            del st["pos"][key]
+
+    def update(now):
+        by_chain = {}
+        for key, p in st["pos"].items():
+            by_chain.setdefault(p["chain"], []).append(p["pair"])
+        fresh = {}
+        for chain, prs in by_chain.items():
+            for i in range(0, len(prs), 30):
+                try:
+                    for q in (_dex(f"/latest/dex/pairs/{chain}/{','.join(prs[i:i + 30])}").get("pairs") or []):
+                        fresh[q["pairAddress"]] = q
+                except Exception:
+                    continue
+        for key, p in list(st["pos"].items()):
+            q = fresh.get(p["pair"])
+            if q is None:
+                p["missing"] = p.get("missing", 0) + 1
+                if p["missing"] >= 30:                # borta i 30 min -> rugg
+                    sell(key, 1.0, now, "försvann (rugg)", rug=True)
+                continue
+            p["missing"] = 0
+            try:
+                p["price"] = float(q["priceUsd"]); p["liq"] = float(q["liquidity"]["usd"])
+            except Exception:
+                continue
+            x = p["price"] / p["entry"]
+            p["peak"] = max(p.get("peak", 1.0), x)
+            if p["liq"] < 0.25 * p["liq0"]:
+                sell(key, 1.0, now, "likviditeten försvann (rugg)", rug=True)
+            elif not p.get("half") and x >= 2.0:
+                sell(key, 0.5, now, "2x – hälften såld, insatsen hemma")
+                st["pos"][key]["half"] = True
+            elif p.get("half") and x <= p["peak"] * (1 - GEM_TRAIL):
+                sell(key, 1.0, now, f"månbiljetten såld ({p['peak']:.1f}x topp)")
+            elif not p.get("half") and x - 1 <= GEM_STOP:
+                sell(key, 1.0, now, "stopp −50 %")
+            elif not p.get("half") and now - p["ts"] > GEM_MAX_DAYS * 86400000 and x < 1.0:
+                sell(key, 1.0, now, "7 dagar utan vinst")
+
+    def scan(now):
+        cands = gem_candidates(now)
+        bought = 0
+        held = {(p["chain"], p["token"]) for p in st["pos"].values()}
+        for p in cands:
+            if bought >= 3 or len(st["pos"]) >= GEM_MAX_POS or st["cash"] < GEM_STAKE:
+                break
+            tok = (p["chainId"], p["baseToken"]["address"])
+            if tok in held or st["seen"].get(f"{tok[0]}:{tok[1]}", 0) > now - 3 * 86400000:
+                continue
+            liq, price = float(p["liquidity"]["usd"]), float(p["priceUsd"])
+            qty = GEM_STAKE * (1 - _gem_cost(GEM_STAKE, liq)) / price
+            name = f"{p['baseToken']['symbol'][:12]} ({p['chainId']})"
+            key = f"{name}#{p['pairAddress'][-4:]}"
+            st["cash"] -= GEM_STAKE
+            st["pos"][key] = {"name": name, "chain": p["chainId"], "pair": p["pairAddress"], "token": tok[1],
+                              "entry": price, "price": price, "qty": qty, "cost": GEM_STAKE, "liq": liq, "liq0": liq,
+                              "ts": now, "peak": 1.0, "url": p.get("url")}
+            st["seen"][f"{tok[0]}:{tok[1]}"] = now
+            held.add(tok)
+            bought += 1
+            log(f"  Myntjägaren köper {name}: likviditet {liq:,.0f} $, handel 24h {float(p['volume']['h24']):,.0f} $")
+        log(f"  Myntjägaren: {len(cands)} kandidater klarade filtren, köpte {bought}")
+
+    while time.time() < end:
+        now = int(time.time() * 1000)
+        try:
+            if now - st.get("last_scan", 0) >= GEM_SCAN_MIN * 60000:
+                scan(now)
+                st["last_scan"] = now
+        except Exception as e:
+            log(f"  Myntjägaren: skanningen misslyckades ({e})")
+        try:
+            update(now)
+        except Exception as e:
+            log(f"  Myntjägaren: prisuppdatering misslyckades ({e})")
+        st["equity"].append([now, round(equity(), 2)])
+        st["equity"] = st["equity"][-6000:]
+        st["last_prices"] = {k: p["price"] for k, p in st["pos"].items()}
+        st["seen"] = {k: v for k, v in st["seen"].items() if v > now - 3 * 86400000}
+        with open(GEM_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(st, f)
+        os.replace(GEM_STATE_FILE + ".tmp", GEM_STATE_FILE)
+        time.sleep(max(1.0, min(60.0, end - time.time())))
+    log(f"Myntjägaren: {money(equity())} USDT, {len(st['pos'])} lotter, {len(st['trades'])} försäljningar")
+
+
+def gem_mail_lines(rate, now_ms):
+    if not os.path.exists(GEM_STATE_FILE):
+        return []
+    with open(GEM_STATE_FILE, encoding="utf-8") as f:
+        st = json.load(f)
+    eqh = st.get("equity") or [[now_ms, START_CAPITAL]]
+    eq = eqh[-1][1]
+    d24 = next((e for t, e in reversed(eqh) if t <= now_ms - 86000 * 1000), eqh[0][1])
+    pos = st["pos"]
+    best = max(pos.values(), key=lambda p: p["price"] / p["entry"]) if pos else None
+    verb = "tjänat" if eq >= START_CAPITAL else "förlorat"
+    moon = sum(1 for p in pos.values() if p.get("half"))
+    return [f"**Bot 7 – myntjägaren: har {kr(eq * rate)}** – har {verb} {kr(abs(eq - START_CAPITAL) * rate)} totalt ({pct_sv(eq / START_CAPITAL - 1)})  ",
+            f"Senaste dygnet: {kr((eq - d24) * rate, sign=True)} · lotter: {len(pos)} · månbiljetter (2x+): {moon} · försäljningar: {len(st['trades'])}  ",
+            f"Bästa lott just nu: {best['name'] + ' ' + format(best['price'] / best['entry'], '.2f') + 'x' if best else 'inga än'}", ""]
+
+
 def run_trend_live(mode="long", once=False, watch_minutes=0):
     """Kör trendmodellen live med papperspengar. Kollar priser varje minut,
     ombalanserar en gång per dygn (när dagsljuset stänger, kl 01:00 svensk vintertid)."""
@@ -3649,6 +3873,8 @@ if __name__ == "__main__":
             run_self_improve(fake=len(args) > 1 and args[1] == "demo")
         elif mode == "trendwatch":  # molnet: en körning + bevaka varje sekund i N minuter
             run_trend_live(args[1], once=True, watch_minutes=float(args[2]) if len(args) > 2 else 55)
+        elif mode == "gemwatch":
+            run_gem_watch(float(args[1]) if len(args) > 1 else 55)
         elif mode == "fastwatch":
             run_fast_watch(float(args[1]) if len(args) > 1 else 55)
         elif mode == "morgon":
