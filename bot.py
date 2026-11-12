@@ -2836,7 +2836,7 @@ def _with_open(f, st, trades):
                 back = p["margin"] * (1 - FEE) + p["qty"] * (fill - p["avg"]) - abs(p["qty"] * fill) * FEE
                 cost = p["margin"]
             elif f == "funding_state.json":
-                side, back, cost = "carry", p["margin"] + p["earned"], p["margin"]
+                side, back, cost = "carry", p["margin"] + p["earned"] - fund_cost(p["notional"]), p["margin"]
             else:
                 side = p["side"]
                 back = trade_value(p["cost"], p["entry"], exit_price(lp.get(sym, p["entry"]), side), side)
@@ -2906,7 +2906,7 @@ def write_dashboard():
             if_sold = st["cash"] + sum(t["pnl"] for t in open_tr) + sum(
                 (p.get("margin") or p.get("cost") or 0) for p in pos.values())
             fee = d["eq"] - if_sold
-            if fee > 0:
+            if fee > 0.05:
                 fee_line = (f"<div class='tiny'>Om allt såldes nu: {kr(if_sold * rate)} "
                             f"(säljavgift + slippage ≈ {kr(-fee * rate, sign=True)})</div>")
         if f == "league_state.json":
