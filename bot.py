@@ -2518,6 +2518,7 @@ FAST_MAX_HOURS = 6
 FAST_COOLDOWN_MIN = 30
 FAST_DAY_LOSS = 0.03
 FAST_MEM = 240               # minuter historik per mynt
+FAST_RESET_MS = 1794495600000   # 12/11 kl 16:00 – nollställd när nya daytradern tog över
 
 
 def _ema(vals, n):
@@ -2566,6 +2567,11 @@ def run_fast_watch(minutes=55):
     if not st:
         st = {"start_ms": int(time.time() * 1000), "cash": START_CAPITAL, "pos": {}, "trades": [], "equity": [], "mins": {}}
         log("Daytradern startar med 10 000 låtsas-USDT")
+    if st.get("reset_at", 0) < FAST_RESET_MS:          # nollställning beställd av Gustav (ny daytrader-version)
+        now0 = int(time.time() * 1000)
+        log("Daytradern nollställs till 10 000 låtsas-USDT (ny version)")
+        st = {"start_ms": now0, "cash": START_CAPITAL, "pos": {}, "trades": [], "equity": [[now0, START_CAPITAL]],
+              "mins": st.get("mins", {}), "reset_at": FAST_RESET_MS, "v2_from": now0}
     st.setdefault("v2_from", int(time.time() * 1000))
     st.setdefault("cooldown", {})
     st.setdefault("day", {})
@@ -2732,6 +2738,13 @@ def run_league():
         with open(LEAGUE_FILE, encoding="utf-8") as f:
             st = json.load(f)
     cur = {n: _last_equity(f)[0] for n, f in LEAGUE_MEMBERS.items()}
+    resets = {}
+    for n, f in LEAGUE_MEMBERS.items():               # en bot som nollställts ska inte ge låtsasvinst/-förlust
+        try:
+            with open(os.path.join(HERE, f), encoding="utf-8") as fh:
+                resets[n] = json.load(fh).get("reset_at", 0)
+        except Exception:
+            resets[n] = 0
     if st:
         for k in LEAGUE_MEMBERS:
             st["weights"].setdefault(k, 0.0)    # ny bot får pengar vid nästa omfördelning
@@ -2741,6 +2754,11 @@ def run_league():
               "last_seen": cur, "last_rebal": now, "log": []}
         log("Lagledaren startar: lika mycket i varje bot")
     else:
+        seen = st.setdefault("seen_reset", {})
+        for k, r in resets.items():
+            if r and seen.get(k) != r:
+                st["last_seen"][k] = cur.get(k)
+                seen[k] = r
         # dagens avkastning = viktad summa av varje bots avkastning sedan förra körningen
         r = 0.0
         for k, w in st["weights"].items():
