@@ -1,0 +1,26 @@
+name: Bygg webbsidan
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency: webbsida
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python bot.py webbsida
+      - run: |
+          git config user.name "trendbot"
+          git config user.email "trendbot@users.noreply.github.com"
+          git add docs kurs.json
+          git commit -m "Webbsida byggd" || echo "Inget nytt"
+          git pull --rebase
+          git push

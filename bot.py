@@ -2139,10 +2139,19 @@ def usd_sek():
             d = json.loads(fetch_text(url, timeout=10))
             v = float(d[path[0]][path[1]])
             if 5 < v < 20:
+                try:
+                    with open(os.path.join(HERE, "kurs.json"), "w", encoding="utf-8") as f:
+                        json.dump({"usd_sek": v, "ts": int(time.time() * 1000)}, f)
+                except Exception:
+                    pass
                 return v, True
         except Exception:
             continue
-    return 10.5, False
+    try:   # senaste kända kurs i stället för en gissning
+        with open(os.path.join(HERE, "kurs.json"), encoding="utf-8") as f:
+            return float(json.load(f)["usd_sek"]), True
+    except Exception:
+        return 9.93, False
 
 
 def kr(x, sign=False):
