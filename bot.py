@@ -3718,7 +3718,7 @@ def run_copy_watch(minutes=55):
 
     def poll(kol, wallet, now):
         last = st["last_sig"].get(kol)
-        opts = {"limit": 200}
+        opts = {"limit": 1000}   # kända plånböcker får ~20 skräptransaktioner/s, filtreras bort nedan
         if last:
             opts["until"] = last
         sigs = _rpc("getSignaturesForAddress", [wallet, opts])
