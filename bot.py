@@ -2779,9 +2779,10 @@ def write_morning_report(path=None):
 
 BOT_EXPLAIN = {
     "Bot 1": "Köper mynt som har stigit de senaste veckorna och säljer när trenden vänder. Kollar trenderna en gång per dygn (kl 01). "
-             "Står i kontanter när inget mynt stiger. Har stop-loss som kollas varje sekund, och nyhetsvakt.",
+             "Står i kontanter när inget mynt stiger. Kan ha flera mynt samtidigt och köper mer när trenden blir starkare. "
+             "Stop-loss och vinstlås kollas varje sekund (vinstlås: säljer om ett mynt som gått bra faller tillbaka).",
     "Bot 2": "Som Bot 1, men kan också blanka: satsar på att mynt som fallit i flera veckor fortsätter falla. "
-             "Kan alltså tjäna både när marknaden går upp och ner. Handlar en gång per dygn, stop-loss varje sekund.",
+             "Kan alltså tjäna både när marknaden går upp och ner. Ser över alla mynt en gång per dygn; stop-loss och vinstlås varje sekund.",
     "Bot 3": "Köper ett mynt och blankar samma mynt samtidigt, så prisrörelser tar ut varandra. Tjänar på avgiften som "
              "hävstångstraders betalar var 8:e timme (kl 01, 09, 17). Små men jämna intäkter.",
     "Bot 4": "Experiment som handlar hela tiden: hoppar på mynt som rört sig mer än 0,3 % på 5 minuter och säljer vid +0,5 %, "
@@ -2840,7 +2841,7 @@ def write_dashboard():
 <details><summary class="name">{n} – {desc} <span class="info">ⓘ</span></summary><div class="explain">{_h.escape(BOT_EXPLAIN.get(n, ""))}</div></details>
 <div class="big">{kr(d['eq'] * rate)}</div>
 <div class="{'pos' if tot >= 0 else 'neg'}">{kr(tot * rate, sign=True)} totalt ({pct_sv(d['eq'] / START_CAPITAL - 1)})</div>
-<div class="small">Senaste dygnet: <span class="{'pos' if d['eq'] >= d['d24'] else 'neg'}">{kr((d['eq'] - d['d24']) * rate, sign=True)}</span> · affärer 24 h: {len(d['t24'])} · totalt: {len(d['trades'])}</div>
+<div class="small">Senaste dygnet: <span class="{'pos' if d['eq'] >= d['d24'] else 'neg'}">{kr((d['eq'] - d['d24']) * rate, sign=True)}</span> · öppna affärer: {len(pos)} · avslutade: {len(d['trades'])}</div>
 <div class="small">{_h.escape(extra)}</div></div>"""
     trades = []
     for n, _, _, c, d in data:
@@ -2984,6 +2985,14 @@ def run_trend_live(mode="long", once=False, watch_minutes=0):
                     continue
                 r = (cur / p["avg"] - 1) * (1 if p["qty"] > 0 else -1)
                 lim = p.get("stop_pct", TREND_EMERGENCY_STOP) * (0.5 if risk_off(st, now) else 1.0)
+                # VINSTLÅS: har positionen gått bra flyttas stoppet upp och vinsten låses in
+                p["peak"] = max(p.get("peak", 0.0), r)
+                base = p.get("stop_pct", TREND_EMERGENCY_STOP)
+                if p["peak"] >= base and r <= p["peak"] - 0.6 * base:
+                    log(f"  VINSTLÅS: {sym} nådde {pct(p['peak'])}, föll tillbaka till {pct(r)} - säljer och tar hem vinsten")
+                    trade_to(sym, 0.0, cur, now)
+                    st.setdefault("blocked", {})[sym] = (now // 86400000 + 1) * 86400000 + 3600 * 1000
+                    continue
                 if p["qty"] < 0 and sym in st.get("social", {}).get("no_short", {}):
                     log(f"  SOCIAL VAKT: stänger blankningen i {sym} (Musk)")
                     trade_to(sym, 0.0, cur, now)
