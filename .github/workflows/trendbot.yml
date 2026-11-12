@@ -28,11 +28,25 @@ jobs:
           M=$(( 66 - 10#$(date -u +%M) ))
           if [ $M -gt 58 ]; then M=58; fi
           echo "Bevakar i $M minuter"
-          python bot.py trendwatch long $M &
+          git config user.name "trendbot"
+          git config user.email "trendbot@users.noreply.github.com"
+          python bot.py trendwatch long $M & P1=$!
           sleep 20
-          python bot.py trendwatch longshort $M &
-          python bot.py fastwatch $M &
-          wait
+          python bot.py trendwatch longshort $M & P2=$!
+          python bot.py fastwatch $M & P3=$!
+          # uppdatera webbsidan och spara läget var 5:e minut medan botarna kör
+          (
+            while true; do
+              sleep 300
+              python bot.py webbsida > /dev/null 2>&1 || true
+              git add docs *.json > /dev/null 2>&1
+              if git commit -q -m "Live-uppdatering $(date -u +%H:%M)" > /dev/null 2>&1; then
+                git pull -q --rebase > /dev/null 2>&1 && git push -q > /dev/null 2>&1 || true
+              fi
+            done
+          ) & UPD=$!
+          wait $P1 $P2 $P3
+          kill $UPD || true
           python bot.py fundingonce || echo "Funding-boten misslyckades denna gång"
           python bot.py league || echo "Lagledaren misslyckades denna gång"
           python bot.py webbsida || echo "Webbsidan misslyckades denna gång"
