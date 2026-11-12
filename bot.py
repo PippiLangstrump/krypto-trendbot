@@ -2748,8 +2748,6 @@ def write_morning_report(path=None):
         d = _bot_data(f, now_ms)
         if d:
             rows.append((name, desc, d))
-    rows.sort(key=lambda x: -(x[2]["eq"] / x[2]["d24"]))
-    medals = ["🥇", "🥈", "🥉", "4.", "5."]
     lines = [f"## ☀️ God morgon! Nattens resultat – {_se_now().strftime('%d/%m')}", "",
              "<sub>Senaste 24 timmarna · låtsaspengar</sub>", ""]
     for i, (name, desc, d) in enumerate(rows):
@@ -2760,7 +2758,7 @@ def write_morning_report(path=None):
         if best:
             bw = (f"  \nBästa: {best['symbol'].replace('USDT', '')} {kr(best['pnl'] * rate, sign=True)} · "
                   f"Sämsta: {worst['symbol'].replace('USDT', '')} {kr(worst['pnl'] * rate, sign=True)}")
-        lines.append(f"{medals[i]} **{name} – {desc}:** {kr(ch * rate, sign=True)} ({pct_sv(d['eq'] / d['d24'] - 1)}) i natt · "
+        lines.append(f"**{name} – {desc}:** {kr(ch * rate, sign=True)} ({pct_sv(d['eq'] / d['d24'] - 1)}) i natt · "
                      f"totalt {kr((d['eq'] - START_CAPITAL) * rate, sign=True)} · {len(d['t24'])} affärer{bw}")
         lines.append("")
     lines.append("Webbsida med grafer: https://raw.githack.com/PippiLangstrump/krypto-trendbot/main/docs/index.html")
@@ -2801,9 +2799,8 @@ def write_dashboard():
         parts.append(f'<text x="{W - P}" y="{H - 12}" fill="#888" font-size="11" text-anchor="end">{fmt_ts(x1 + 3600000)[:16]}</text>')
         parts.append("</svg>")
         svg = "".join(parts)
-    ranked = sorted(data, key=lambda x: -x[4]["eq"])
     cards = ""
-    for i, (n, desc, f, c, d) in enumerate(ranked):
+    for i, (n, desc, f, c, d) in enumerate(data):
         tot = d["eq"] - START_CAPITAL
         st = d["st"]
         pos = st.get("pos", {})
@@ -2817,7 +2814,7 @@ def write_dashboard():
         else:
             extra = "Äger/blankar: " + (", ".join(s.replace("USDT", "") + (" ↑" if p.get("qty", 1) > 0 else " ↓") for s, p in pos.items()) or "inget")
         cards += f"""<div class="card" style="border-left:4px solid {c}">
-<div class="rank">{i + 1}</div><div class="name">{n} – {desc}</div>
+<div class="name">{n} – {desc}</div>
 <div class="big">{kr(d['eq'] * rate)}</div>
 <div class="{'pos' if tot >= 0 else 'neg'}">{kr(tot * rate, sign=True)} totalt ({pct_sv(d['eq'] / START_CAPITAL - 1)})</div>
 <div class="small">Senaste dygnet: <span class="{'pos' if d['eq'] >= d['d24'] else 'neg'}">{kr((d['eq'] - d['d24']) * rate, sign=True)}</span> · affärer 24 h: {len(d['t24'])} · totalt: {len(d['trades'])}</div>
@@ -2850,7 +2847,7 @@ h1{{font-size:22px;margin:4px 0}} h2{{font-size:16px;color:#bbb;margin:22px 0 8p
 .legend span{{margin-right:12px;font-size:12px}} ul{{padding-left:18px;font-size:13px;color:#bbb}}</style></head><body>
 <h1>📈 Kryptobotarna</h1><div class="muted">Låtsaspengar, riktiga priser · uppdaterad {_se_now().strftime('%d/%m %H:%M')} · laddar om var 5:e minut</div>
 <h2>Alla botar – % sedan start</h2><div class="box">{svg}<div class="legend">{''.join(f"<span style='color:{c}'>● {n}</span>" for n, _, _, c, _ in data)}</div></div>
-<h2>Ställning</h2>{cards}
+<h2>Botarna</h2>{cards}
 <h2>Senaste affärerna</h2><div class="box"><table>{trows}</table></div>
 <h2>Nyheter och vakter</h2><div class="box"><div class="small">{' · '.join(guard)}</div><ul>{nrows}</ul></div>
 </body></html>"""
