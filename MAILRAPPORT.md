@@ -1,17 +1,17 @@
-## 🕐 Kl 10:00 – 12/11
+## 🕐 Kl 11:00 – 12/11
 <sub>Låtsaspengar · varje bot startade med 99 317 kr</sub>
 
-Status: ✅ igång – kollade priserna 3 478 gånger senaste körningen  
+Status: ✅ igång – kollade priserna 3 469 gånger senaste körningen  
 **Bot 1 – köper bara: har 99 026 kr** – har förlorat 291 kr totalt (−0,3 %)  
 Senaste dygnet: −281 kr · Affärer senaste timmen: 0  
 Bästa just nu: PEPE (köpt) −2,8 % = −291 kr  
 Sämsta just nu: PEPE (köpt) −2,8 % = −291 kr  
 Äger/blankar: inget – väntar på bättre läge
 
-Status: ✅ igång – kollade priserna 3 477 gånger senaste körningen  
-**Bot 2 – köper och blankar: har 100 708 kr** – har tjänat 1 391 kr totalt (+1,4 %)  
-Senaste dygnet: +1 474 kr · Affärer senaste timmen: 0  
-Bästa just nu: DOGE (blankat) +2,2 % = +272 kr  
+Status: ✅ igång – kollade priserna 3 468 gånger senaste körningen  
+**Bot 2 – köper och blankar: har 100 369 kr** – har tjänat 1 052 kr totalt (+1,1 %)  
+Senaste dygnet: +1 136 kr · Affärer senaste timmen: 0  
+Bästa just nu: BNB (blankat) +1,7 % = +260 kr  
 Sämsta just nu: PEPE (köpt) −2,6 % = −168 kr  
 Äger/blankar: BNB (blankat), BONK (blankat), DOGE (blankat), ETH (blankat), SOL (blankat), WIF (blankat), XRP (blankat), BTC (blankat)
 
