@@ -3716,63 +3716,78 @@ def run_copy_watch(minutes=55):
         if frac >= 0.98 or p["cost"] < 1:
             del st["pos"][mint]
 
-    def poll(kol, wallet, now):
-        last = st["last_sig"].get(kol)
-        opts = {"limit": 1000}   # kända plånböcker får ~20 skräptransaktioner/s, filtreras bort nedan
-        if last:
-            opts["until"] = last
-        sigs = _rpc("getSignaturesForAddress", [wallet, opts])
-        if not sigs:
-            return
-        st["last_sig"][kol] = sigs[0]["signature"]
-        if not last:
-            return                                   # första gången: börja bevaka från nu
-        ok = [x for x in sigs if not x.get("err")]
-        if len(ok) > 15:
-            log(f"  Kopieraren: {kol} gjorde {len(ok)} transaktioner sedan sist, läser de 15 senaste")
-            ok = ok[:15]
-        for s in reversed(ok):
+    import threading, queue
+    found = queue.Queue()
+    stop_flag = threading.Event()
+
+    def watcher(kol, wallet):
+        """Egen tråd per trader: kollar plånboken varje sekund, lägger hittade köp/sälj i kön."""
+        wait = 1.0
+        while not stop_flag.is_set():
+            t0 = time.time()
             try:
-                tx = _rpc("getTransaction", [s["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}])
-                time.sleep(0.1)
-                sw = parse_swap(tx, wallet)
-            except Exception:
-                continue
-            if not sw:
-                continue
-            mint, kind, sol_amt, frac = sw
-            st["seen_kol"][kol] = st["seen_kol"].get(kol, 0) + 1
-            if kind == "buy" and sol_amt >= COPY_MIN_SOL and mint not in st["pos"] and len(st["pos"]) < COPY_MAX_POS:
-                m = _token_market(mint)
-                if not m:
-                    continue
-                price, liq, name, url = m
-                eq = equity()
-                stake = min(eq * COPY_STAKE, st["cash"])
-                if stake < MIN_TRADE_USDT:
-                    continue
-                st["cash"] -= stake
-                st["pos"][mint] = {"name": f"{name} ({kol})", "kol": kol, "entry": price, "price": price, "liq": liq,
-                                   "qty": stake * (1 - _gem_cost(stake, liq)) / price, "cost": stake, "ts": now,
-                                   "url": url, "kol_sol": sol_amt}
-                log(f"  Kopieraren: {kol} köpte {name} för {sol_amt:.1f} SOL -> köper för {stake:.0f} USDT")
-            elif kind == "sell" and mint in st["pos"] and st["pos"][mint]["kol"] == kol:
-                p = st["pos"][mint]
-                m = _token_market(mint)
-                if m:
-                    p["price"], p["liq"] = m[0], m[1]
-                sell(mint, 1.0 if frac > 0.9 else frac, now, f"{kol} sålde {frac * 100:.0f} %")
+                last = st["last_sig"].get(kol)
+                opts = {"limit": 1000}   # kända plånböcker får ~20 skräptransaktioner/s, filtreras bort nedan
+                if last:
+                    opts["until"] = last
+                sigs = _rpc("getSignaturesForAddress", [wallet, opts])
+                if sigs:
+                    st["last_sig"][kol] = sigs[0]["signature"]
+                    ok = [x for x in sigs if not x.get("err")][:15] if last else []
+                    for sg in reversed(ok):
+                        try:
+                            tx = _rpc("getTransaction", [sg["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}])
+                            sw = parse_swap(tx, wallet)
+                        except Exception:
+                            continue
+                        if sw:
+                            found.put((kol, sw, int(time.time() * 1000), sg.get("blockTime")))
+                wait = max(1.0, wait * 0.8)
+            except Exception as e:
+                if "429" in str(e):
+                    wait = min(8.0, wait * 2)        # för många anrop -> sakta ner en stund
+                else:
+                    log(f"  Kopieraren: kunde inte läsa {kol} ({e})")
+            stop_flag.wait(max(0.0, wait - (time.time() - t0)))
+
+    def act(kol, sw, now, block_time):
+        mint, kind, sol_amt, frac = sw
+        st["seen_kol"][kol] = st["seen_kol"].get(kol, 0) + 1
+        lag = (now / 1000 - block_time) if block_time else None
+        if kind == "buy" and sol_amt >= COPY_MIN_SOL and mint not in st["pos"] and len(st["pos"]) < COPY_MAX_POS:
+            m = _token_market(mint)
+            if not m:
+                return
+            price, liq, name, url = m
+            stake = min(equity() * COPY_STAKE, st["cash"])
+            if stake < MIN_TRADE_USDT:
+                return
+            st["cash"] -= stake
+            st["pos"][mint] = {"name": f"{name} ({kol})", "kol": kol, "entry": price, "price": price, "liq": liq,
+                               "qty": stake * (1 - _gem_cost(stake, liq)) / price, "cost": stake, "ts": now,
+                               "url": url, "kol_sol": sol_amt, "lag_s": lag}
+            log(f"  Kopieraren: {kol} köpte {name} för {sol_amt:.1f} SOL -> köper för {stake:.0f} USDT"
+                + (f" ({lag:.0f} s efter)" if lag is not None else ""))
+        elif kind == "sell" and mint in st["pos"] and st["pos"][mint]["kol"] == kol:
+            p = st["pos"][mint]
+            m = _token_market(mint)
+            if m:
+                p["price"], p["liq"] = m[0], m[1]
+            sell(mint, 1.0 if frac > 0.9 else frac, now, f"{kol} sålde {frac * 100:.0f} %")
+
+    threads = [threading.Thread(target=watcher, args=(k, w), daemon=True) for k, w in COPY_WALLETS.items()]
+    for i, t in enumerate(threads):
+        t.start()
+        time.sleep(0.1)
 
     while time.time() < end:
         now = int(time.time() * 1000)
-        for kol, wallet in COPY_WALLETS.items():
+        while not found.empty():
+            kol, sw, ts, bt = found.get()
             try:
-                poll(kol, wallet, int(time.time() * 1000))
+                act(kol, sw, ts, bt)
             except Exception as e:
-                log(f"  Kopieraren: kunde inte läsa {kol} ({e})")
-                if "429" in str(e):
-                    time.sleep(5)                    # för många anrop -> andas lite
-            time.sleep(0.25)
+                log(f"  Kopieraren: kunde inte kopiera {kol} ({e})")
         if time.time() - last_px > 60 and st["pos"]:
             last_px = time.time()
             for mint, p in list(st["pos"].items()):
@@ -3795,7 +3810,8 @@ def run_copy_watch(minutes=55):
             with open(COPY_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:
                 json.dump(st, f)
             os.replace(COPY_STATE_FILE + ".tmp", COPY_STATE_FILE)
-        time.sleep(max(0.0, min(1.0, end - time.time())))   # alla 10 plånböcker kollas ungefär var 3:e sekund
+        time.sleep(max(0.0, min(0.2, end - time.time())))
+    stop_flag.set()
     st["equity"].append([int(time.time() * 1000), round(equity(), 2)])
     st["last_prices"] = {k: p["price"] for k, p in st["pos"].items()}
     with open(COPY_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:

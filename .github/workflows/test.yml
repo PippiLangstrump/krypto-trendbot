@@ -28,5 +28,5 @@ jobs:
           t = time.time()
           bot.run_copy_watch(2)
           st = json.load(open("/tmp/copy.json"))
-          print("RESULTAT anrop", calls[0], "på", round(time.time() - t), "s, köp", len(st["pos"]), [p["name"] for p in st["pos"].values()], "sett", st["seen_kol"])
+          print("RESULTAT anrop", calls[0], "på", round(time.time() - t), "s, per plånbok/s", round(calls[0] / 10 / (time.time() - t), 2), "köp", len(st["pos"]), [p["name"] for p in st["pos"].values()], "sett", st["seen_kol"])
           PY
