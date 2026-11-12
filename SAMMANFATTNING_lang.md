@@ -1,20 +1,20 @@
 ## Trendbot (bara lång)
 
-Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-12 00:06 (UTC)
+Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-12 01:06 (UTC)
 
 ![Kapital över tid](graf_lang.svg)
 
 | | |
 |---|---|
-| Kapital | **9 969.44 USDT** (-0.31%) |
-| Köp & håll samma tid | -1.20% |
-| Avslutade affärer | 0 (0 % vinster) |
-| Snitt per affär | - |
-| Bästa | - |
-| Sämsta | - |
+| Kapital | **9 970.68 USDT** (-0.29%) |
+| Köp & håll samma tid | -1.35% |
+| Avslutade affärer | 1 (0 % vinster) |
+| Snitt per affär | -2.76% |
+| Bästa | -2.76% PEPEUSDT |
+| Sämsta | -2.76% PEPEUSDT |
 
 Rädsla/girighet: **28** (Fear)  
 
 | Position | Sida | Insats | Resultat |
 |---|---|---|---|
-| PEPEUSDT | Lång | 1 060.75 | -2.83% |
+| (inga) | | | |
