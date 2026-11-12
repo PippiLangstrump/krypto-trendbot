@@ -2708,6 +2708,156 @@ def league_mail_lines(rate, now_ms):
             f"Senaste dygnet: {kr((eq - day_ago) * rate, sign=True)} · Fördelning: {w} · nästa omfördelning {nxt}", ""]
 
 
+# ============================================================================
+# MORGONRAPPORT + WEBBSIDA (läser alla botars sparfiler)
+# ============================================================================
+ALL_BOTS = [("Bot 1", "Köper bara (trend)", "trend_state.json", "#3fb68b"),
+            ("Bot 2", "Köper och blankar (trend)", "trend_state_langkort.json", "#7cb7ff"),
+            ("Bot 3", "Samlar funding (neutral)", "funding_state.json", "#e8c96a"),
+            ("Bot 4", "Snabbhandlaren (experiment)", "fast_state.json", "#f08a84"),
+            ("Bot 5", "Lagledaren (fördelar 1–4)", "league_state.json", "#c39bff")]
+
+
+def _bot_data(fname, now_ms):
+    p = os.path.join(HERE, fname)
+    if not os.path.exists(p):
+        return None
+    with open(p, encoding="utf-8") as f:
+        st = json.load(f)
+    eqh = st.get("equity") or [[now_ms, START_CAPITAL]]
+    eq = eqh[-1][1]
+    d24 = next((e for t, e in reversed(eqh) if t <= now_ms - 86000 * 1000), eqh[0][1])
+    tr = st.get("trades", [])
+    t24 = [t for t in tr if t.get("exit_ts", 0) >= now_ms - 86400 * 1000]
+    return {"st": st, "eq": eq, "d24": d24, "eqh": eqh, "trades": tr, "t24": t24}
+
+
+def _se_now():
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Europe/Stockholm"))
+    except Exception:
+        return datetime.utcnow() + __import__("datetime").timedelta(hours=1)
+
+
+def write_morning_report(path=None):
+    now_ms = int(time.time() * 1000)
+    rate, _ = usd_sek()
+    rows = []
+    for name, desc, f, _c in ALL_BOTS:
+        d = _bot_data(f, now_ms)
+        if d:
+            rows.append((name, desc, d))
+    rows.sort(key=lambda x: -(x[2]["eq"] / x[2]["d24"]))
+    medals = ["🥇", "🥈", "🥉", "4.", "5."]
+    lines = [f"## ☀️ God morgon! Nattens resultat – {_se_now().strftime('%d/%m')}", "",
+             "<sub>Senaste 24 timmarna · låtsaspengar</sub>", ""]
+    for i, (name, desc, d) in enumerate(rows):
+        ch = d["eq"] - d["d24"]
+        best = max(d["t24"], key=lambda t: t["pnl"]) if d["t24"] else None
+        worst = min(d["t24"], key=lambda t: t["pnl"]) if d["t24"] else None
+        bw = ""
+        if best:
+            bw = (f"  \nBästa: {best['symbol'].replace('USDT', '')} {kr(best['pnl'] * rate, sign=True)} · "
+                  f"Sämsta: {worst['symbol'].replace('USDT', '')} {kr(worst['pnl'] * rate, sign=True)}")
+        lines.append(f"{medals[i]} **{name} – {desc}:** {kr(ch * rate, sign=True)} ({pct_sv(d['eq'] / d['d24'] - 1)}) i natt · "
+                     f"totalt {kr((d['eq'] - START_CAPITAL) * rate, sign=True)} · {len(d['t24'])} affärer{bw}")
+        lines.append("")
+    lines.append("Webbsida med grafer: https://raw.githack.com/PippiLangstrump/krypto-trendbot/main/docs/index.html")
+    lines.append("")
+    lines.append("@PippiLangstrump")
+    with open(path or os.path.join(HERE, "MORGONRAPPORT.md"), "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def write_dashboard():
+    import html as _h
+    now_ms = int(time.time() * 1000)
+    rate, _ = usd_sek()
+    os.makedirs(os.path.join(HERE, "docs"), exist_ok=True)
+    data = [(n, d_, f, c, _bot_data(f, now_ms)) for n, d_, f, c in ALL_BOTS]
+    data = [x for x in data if x[4]]
+    # gemensam graf: % sedan start
+    W, H, P = 900, 320, 46
+    series = [(n, c, [(t, e / START_CAPITAL - 1) for t, e in d["eqh"]]) for n, _, _, c, d in data]
+    pts = [p for _, _, s in series for p in s]
+    svg = ""
+    if len(pts) > 2:
+        x0, x1 = min(p[0] for p in pts), max(p[0] for p in pts)
+        y0, y1 = min(min(p[1] for p in pts), -0.005), max(max(p[1] for p in pts), 0.005)
+        X = lambda v: P + (v - x0) / max(1, x1 - x0) * (W - 2 * P)
+        Y = lambda v: H - P - (v - y0) / (y1 - y0) * (H - 2 * P)
+        parts = [f'<svg viewBox="0 0 {W} {H}" width="100%">',
+                 f'<line x1="{P}" x2="{W - P}" y1="{Y(0):.1f}" y2="{Y(0):.1f}" stroke="#555" stroke-dasharray="4 4"/>',
+                 f'<text x="{P - 6}" y="{Y(0) + 4:.1f}" fill="#888" font-size="11" text-anchor="end">0 %</text>',
+                 f'<text x="{P - 6}" y="{Y(y1) + 4:.1f}" fill="#888" font-size="11" text-anchor="end">{y1 * 100:+.1f} %</text>',
+                 f'<text x="{P - 6}" y="{Y(y0) + 4:.1f}" fill="#888" font-size="11" text-anchor="end">{y0 * 100:+.1f} %</text>']
+        for n, c, s in series:
+            step = max(1, len(s) // 600)
+            ss = s[::step] + [s[-1]]
+            d = " ".join(f"{'M' if i == 0 else 'L'}{X(a):.1f},{Y(b):.1f}" for i, (a, b) in enumerate(ss))
+            parts.append(f'<path d="{d}" fill="none" stroke="{c}" stroke-width="2.2"/>')
+        parts.append(f'<text x="{P}" y="{H - 12}" fill="#888" font-size="11">{fmt_ts(x0 + 3600000)[:16]}</text>')
+        parts.append(f'<text x="{W - P}" y="{H - 12}" fill="#888" font-size="11" text-anchor="end">{fmt_ts(x1 + 3600000)[:16]}</text>')
+        parts.append("</svg>")
+        svg = "".join(parts)
+    ranked = sorted(data, key=lambda x: -x[4]["eq"])
+    cards = ""
+    for i, (n, desc, f, c, d) in enumerate(ranked):
+        tot = d["eq"] - START_CAPITAL
+        st = d["st"]
+        pos = st.get("pos", {})
+        if f == "league_state.json":
+            extra = "Fördelning: " + ", ".join(f"{k} {v * 100:.0f} %" for k, v in st.get("weights", {}).items())
+        elif f == "funding_state.json":
+            extra = f"Samlar på: {', '.join(s.replace('USDT', '') for s in pos) or 'inget'} · insamlat {kr(st.get('funding_total', 0) * rate, sign=True)}"
+        elif f == "fast_state.json":
+            wins = sum(1 for t in d["trades"] if t["pnl"] > 0)
+            extra = f"Öppna: {', '.join(s.replace('USDT', '') for s in pos) or 'inga'} · vinstandel {(wins / len(d['trades']) * 100 if d['trades'] else 0):.0f} %"
+        else:
+            extra = "Äger/blankar: " + (", ".join(s.replace("USDT", "") + (" ↑" if p.get("qty", 1) > 0 else " ↓") for s, p in pos.items()) or "inget")
+        cards += f"""<div class="card" style="border-left:4px solid {c}">
+<div class="rank">{i + 1}</div><div class="name">{n} – {desc}</div>
+<div class="big">{kr(d['eq'] * rate)}</div>
+<div class="{'pos' if tot >= 0 else 'neg'}">{kr(tot * rate, sign=True)} totalt ({pct_sv(d['eq'] / START_CAPITAL - 1)})</div>
+<div class="small">Senaste dygnet: <span class="{'pos' if d['eq'] >= d['d24'] else 'neg'}">{kr((d['eq'] - d['d24']) * rate, sign=True)}</span> · affärer 24 h: {len(d['t24'])} · totalt: {len(d['trades'])}</div>
+<div class="small">{_h.escape(extra)}</div></div>"""
+    trades = []
+    for n, _, _, c, d in data:
+        for t in d["trades"][-30:]:
+            trades.append((t.get("exit_ts", 0), n, c, t))
+    trades.sort(key=lambda x: -x[0])
+    trows = "".join(f"<tr><td>{fmt_ts(ts + 3600000)[5:16]}</td><td style='color:{c}'>{n}</td><td>{t['symbol'].replace('USDT', '')}</td>"
+                    f"<td>{'köpt' if t.get('side') == 'long' else ('blankat' if t.get('side') == 'short' else 'funding')}</td>"
+                    f"<td class='{'pos' if t['pnl'] >= 0 else 'neg'}'>{kr(t['pnl'] * rate, sign=True)}</td></tr>"
+                    for ts, n, c, t in trades[:25]) or "<tr><td colspan=5>Inga avslutade affärer än</td></tr>"
+    soc = (data[1][4]["st"].get("social", {}) if len(data) > 1 else {})
+    fng = data[1][4]["st"].get("fng") if len(data) > 1 else None
+    guard = []
+    if fng:
+        guard.append(f"Rädsla/girighet: <b>{fng[0]}</b> ({_h.escape(fng[1])})")
+    if soc.get("risk_off_until", 0) > now_ms:
+        guard.append(f"⚠️ Social vakt aktiv: {_h.escape(soc.get('reason', ''))}")
+    news = (data[1][4]["st"].get("news", []) if len(data) > 1 else [])[:8]
+    nrows = "".join(f"<li>{_h.escape(x['title'])}</li>" for x in news)
+    html = f"""<!DOCTYPE html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="300"><title>Kryptobotarna</title>
+<style>body{{background:#0f1115;color:#e6e6e6;font-family:-apple-system,Segoe UI,system-ui,sans-serif;margin:0;padding:16px;max-width:960px;margin:auto}}
+h1{{font-size:22px;margin:4px 0}} h2{{font-size:16px;color:#bbb;margin:22px 0 8px}} .muted,.small{{color:#999;font-size:13px}}
+.card{{background:#181b22;border-radius:10px;padding:12px 14px;margin:10px 0;position:relative}} .rank{{position:absolute;right:14px;top:10px;color:#666;font-size:20px}}
+.name{{font-size:14px;color:#ccc}} .big{{font-size:24px;font-weight:600;margin:4px 0}} .pos{{color:#3fb68b}} .neg{{color:#e5534b}}
+.box{{background:#181b22;border-radius:10px;padding:10px}} table{{width:100%;border-collapse:collapse;font-size:13px}} td{{padding:6px;border-bottom:1px solid #262a33}}
+.legend span{{margin-right:12px;font-size:12px}} ul{{padding-left:18px;font-size:13px;color:#bbb}}</style></head><body>
+<h1>📈 Kryptobotarna</h1><div class="muted">Låtsaspengar, riktiga priser · uppdaterad {_se_now().strftime('%d/%m %H:%M')} · laddar om var 5:e minut</div>
+<h2>Alla botar – % sedan start</h2><div class="box">{svg}<div class="legend">{''.join(f"<span style='color:{c}'>● {n}</span>" for n, _, _, c, _ in data)}</div></div>
+<h2>Ställning</h2>{cards}
+<h2>Senaste affärerna</h2><div class="box"><table>{trows}</table></div>
+<h2>Nyheter och vakter</h2><div class="box"><div class="small">{' · '.join(guard)}</div><ul>{nrows}</ul></div>
+</body></html>"""
+    with open(os.path.join(HERE, "docs", "index.html"), "w", encoding="utf-8") as f:
+        f.write(html)
+
+
 def run_trend_live(mode="long", once=False, watch_minutes=0):
     """Kör trendmodellen live med papperspengar. Kollar priser varje minut,
     ombalanserar en gång per dygn (när dagsljuset stänger, kl 01:00 svensk vintertid)."""
@@ -3013,6 +3163,10 @@ if __name__ == "__main__":
             run_trend_live(args[1], once=True, watch_minutes=float(args[2]) if len(args) > 2 else 55)
         elif mode == "fastwatch":
             run_fast_watch(float(args[1]) if len(args) > 1 else 55)
+        elif mode == "morgon":
+            write_morning_report()
+        elif mode == "webbsida":
+            write_dashboard()
         elif mode == "league":
             run_league()
         elif mode == "fundingonce":
