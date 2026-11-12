@@ -3362,7 +3362,7 @@ GEM_STATE_FILE = os.path.join(HERE, "gem_state.json")
 GEM_CHAINS = ("solana", "base", "bsc", "ethereum")
 GEM_STAKE = 0.02 * START_CAPITAL
 GEM_MAX_POS = 40
-GEM_MIN_LIQ, GEM_MIN_VOL24 = 50_000, 200_000
+GEM_MIN_LIQ, GEM_MIN_VOL24 = 30_000, 100_000
 GEM_MIN_AGE_H, GEM_MAX_AGE_D = 6, 30
 GEM_MAX_FDV = 50_000_000
 GEM_FEE = 0.003              # DEX-avgift per köp/sälj
@@ -3391,6 +3391,18 @@ def gem_candidates(now_ms):
                     toks.setdefault(t["chainId"], set()).add(t["tokenAddress"])
         except Exception as e:
             log(f"  Myntjägaren: kunde inte läsa {path} ({e})")
+    # fler källor: GeckoTerminals trendande pooler per kedja (gratis, öppet)
+    gt = {"solana": "solana", "base": "base", "bsc": "bsc", "ethereum": "eth"}
+    for chain, net in gt.items():
+        for page in (1, 2):
+            try:
+                d = json.loads(fetch_text(f"https://api.geckoterminal.com/api/v2/networks/{net}/trending_pools?page={page}", timeout=20))
+                for pool in d.get("data", []):
+                    tid = pool["relationships"]["base_token"]["data"]["id"]
+                    toks.setdefault(chain, set()).add(tid.split("_", 1)[1])
+                time.sleep(2.2)
+            except Exception as e:
+                log(f"  Myntjägaren: GeckoTerminal {net} sida {page} misslyckades ({e})")
     pairs = []
     for chain, addrs in toks.items():
         addrs = sorted(addrs)
@@ -3417,7 +3429,7 @@ def gem_candidates(now_ms):
             continue
         if (liq < GEM_MIN_LIQ or vol < GEM_MIN_VOL24 or not (GEM_MIN_AGE_H <= age_h <= GEM_MAX_AGE_D * 24)
                 or not (0 < fdv <= GEM_MAX_FDV) or fdv / liq > 60 or buys + sells < 100
-                or buys < sells * 1.15 or ch1 <= 0 or not (0 < ch24 < 300) or price <= 0
+                or buys < sells * 1.1 or ch1 <= 0 or not (0 < ch24 < 500) or price <= 0
                 or quote not in ("SOL", "WETH", "ETH", "WBNB", "BNB", "USDC", "USDT")):
             continue
         score = min(vol / liq, 20) * (buys / max(sells, 1)) * (1 + min(ch1, 50) / 100)
