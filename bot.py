@@ -2902,14 +2902,14 @@ BOT_EXPLAIN = {
              "sekundpriserna och handlar bara med trenden: köper rekyler och utbrott i upptrend, blankar i nedtrend. "
              "Varje affär riskerar 0,75 % av pengarna. Inget fast vinstmål: släpande stopp låter vinnarna springa, "
              "förlorare kapas snabbt. Pausar ett mynt 30 min efter förlust och slutar för dagen vid −3 %.",
-    "Bot 7": "Letar nästa Bitcoin bland nya småmynt på DexScreener var 15:e minut. Sorterar bort skräp och bedrägerier "
+    "Bot 7": "Letar nästa Bitcoin bland nya småmynt på DexScreener var 5:e minut och kollar sina lotter var 5:e sekund. Sorterar bort skräp och bedrägerier "
              "(för lite pengar i handeln, för nya, fler säljare än köpare). Köper pyttesmå lotter, 2 % var, i upp till 40 mynt. "
              "Vid 2x säljs hälften så insatsen är hemma; resten får springa tills den tappar 60 % från toppen. "
              "Ett lotteri med regler: de flesta lotter förlorar, en enda stor vinnare kan bära allt.",
     "Bot 8": "Härmar 10 kända memecoin-traders (Cented, Theo, Cupsey, Decu, Pain, Kadenox, Trunoest, Kev, West, Yugi) genom att läsa deras offentliga plånböcker på "
              "Solana. När de köper (minst 0,5 SOL) köper boten samma mynt för 1 % av pengarna; när de säljer säljer den samma "
              "andel. Kommer alltid in lite efter dem och till sämre pris – det räknas med.",
-    "Bot 9": "Läser kryptonyheter från 11 källor varannan minut och letar okända projekt (inte de 50 största) som har något "
+    "Bot 9": "Läser kryptonyheter från 11 källor var 45:e sekund och letar okända projekt (inte de 50 största) som har något "
              "stort på gång: börsnotering på Binance/Coinbase/Upbit, finansieringsrunda, lansering, stort samarbete eller ETF. "
              "Köper direkt efter nyheten om myntet inte redan rusat. Säljer hälften vid +30 %, resten med släpande stopp; "
              "stopp vid −12 %, säljer direkt vid dålig nyhet. Lär sig vilka sorters nyheter som ger pengar.",
@@ -3456,7 +3456,7 @@ GEM_FEE = 0.003              # DEX-avgift per köp/sälj
 GEM_STOP = -0.50
 GEM_TRAIL = 0.60
 GEM_MAX_DAYS = 7
-GEM_SCAN_MIN = 15
+GEM_SCAN_MIN = 5
 DEX = "https://api.dexscreener.com"
 
 
@@ -3580,7 +3580,7 @@ def run_gem_watch(minutes=55):
             q = fresh.get(p["pair"])
             if q is None:
                 p["missing"] = p.get("missing", 0) + 1
-                if p["missing"] >= 30:                # borta i 30 min -> rugg
+                if p["missing"] >= 360:               # borta i ~30 min -> rugg
                     sell(key, 1.0, now, "försvann (rugg)", rug=True)
                 continue
             p["missing"] = 0
@@ -3638,14 +3638,15 @@ def run_gem_watch(minutes=55):
             update(now)
         except Exception as e:
             log(f"  Myntjägaren: prisuppdatering misslyckades ({e})")
-        st["equity"].append([now, round(equity(), 2)])
-        st["equity"] = st["equity"][-6000:]
+        if not st["equity"] or now - st["equity"][-1][0] >= 60000:
+            st["equity"].append([now, round(equity(), 2)])
+            st["equity"] = st["equity"][-6000:]
         st["last_prices"] = {k: p["price"] for k, p in st["pos"].items()}
         st["seen"] = {k: v for k, v in st["seen"].items() if v > now - 3 * 86400000}
         with open(GEM_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:
             json.dump(st, f)
         os.replace(GEM_STATE_FILE + ".tmp", GEM_STATE_FILE)
-        time.sleep(max(1.0, min(60.0, end - time.time())))
+        time.sleep(max(1.0, min(5.0, end - time.time())))   # lotterna kollas var 5:e sekund
     log(f"Myntjägaren: {money(equity())} USDT, {len(st['pos'])} lotter, {len(st['trades'])} försäljningar")
 
 
@@ -4192,7 +4193,7 @@ def run_news_watch(minutes=55):
             if m:
                 markets = m
                 st["markets_ts"] = now
-        if time.time() - last_news >= 120 and markets:
+        if time.time() - last_news >= 45 and markets:
             last_news = time.time()
             heads = []
             for url in NEWS9_FEEDS:
@@ -4246,7 +4247,7 @@ def run_news_watch(minutes=55):
                 log(f"  Nyhetsjägaren köper {m['symbol'].upper()} (rank {m.get('market_cap_rank')}, {kind}): {h['title'][:90]}")
             st["seen"] = st["seen"][-3000:]
             first_run = False
-        if time.time() - last_px >= 60 and st["pos"]:
+        if time.time() - last_px >= 15 and st["pos"]:
             last_px = time.time()
             try:
                 px = _cg(f"/simple/price?ids={','.join(st['pos'])}&vs_currencies=usd")
