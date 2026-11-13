@@ -3484,7 +3484,7 @@ def gem_candidates(now_ms):
     # fler källor: GeckoTerminals trendande pooler per kedja (gratis, öppet)
     gt = {"solana": "solana", "base": "base", "bsc": "bsc", "ethereum": "eth"}
     for chain, net in gt.items():
-        for page in (1, 2):
+        for page in (1,):                      # bara sida 1: färre anrop -> inga 429-fel
             try:
                 d = json.loads(fetch_text(f"https://api.geckoterminal.com/api/v2/networks/{net}/trending_pools?page={page}", timeout=20))
                 for pool in d.get("data", []):
@@ -3492,7 +3492,7 @@ def gem_candidates(now_ms):
                     toks.setdefault(chain, set()).add(tid.split("_", 1)[1])
             except Exception as e:
                 log(f"  Myntjägaren: GeckoTerminal {net} sida {page} misslyckades ({e})")
-            time.sleep(3)                      # max ~30 anrop/minut hos GeckoTerminal
+            time.sleep(4)                      # GeckoTerminal tål ~30 anrop/minut totalt
     pairs = []
     for chain, addrs in toks.items():
         addrs = sorted(addrs)
