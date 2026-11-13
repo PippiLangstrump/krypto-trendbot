@@ -3658,6 +3658,7 @@ COPY_MAX_POS = 30
 COPY_STOP = -0.70
 COPY_MAX_HOURS = 48
 COPY_LAG_PENALTY = 0.02      # minst 2 % sämre pris än traderns eget (vi är alltid efter)
+COPY_CROWD = 0.02            # andra kopierare köper/säljer samtidigt som vi
 COPY_RESET_MS = 1794553200000   # 13/11 kl 08:00 – nollställd med ärligare räkning
 SOL_RPCS = ["https://solana-rpc.publicnode.com", "https://api.mainnet-beta.solana.com"]   # snabbast först
 WSOL = "So11111111111111111111111111111111111111112"
@@ -3814,7 +3815,10 @@ def run_copy_watch(minutes=55):
                 return
             price, liq, name, url = m
             if kol_px:
-                price = kol_px * (1 + late)   # traderns eget pris + straff (DexScreener kan visa gammalt pris)
+                # Traderns köp trycker upp priset (hans snittpris ligger mitt i rörelsen) och andra
+                # kopierare köper samtidigt -> vi köper dyrare än han.
+                imp = min(0.5, sol_amt * sol_usd[0] / max(liq, 1.0))
+                price = kol_px * (1 + imp) * (1 + late + COPY_CROWD)
             stake = min(equity() * COPY_STAKE, st["cash"])
             if stake < MIN_TRADE_USDT:
                 return
@@ -3830,7 +3834,9 @@ def run_copy_watch(minutes=55):
             if m:
                 p["price"], p["liq"] = m[0], m[1]
             if kol_px:
-                p["price"] = kol_px * (1 - late)   # vi säljer efter dem -> lite sämre pris än deras
+                # Hans sälj trycker ner priset och alla kopierare säljer samtidigt -> vi säljer i dippen.
+                imp = min(0.5, sol_amt * sol_usd[0] / max(p["liq"], 1.0))
+                p["price"] = kol_px * (1 - imp) * (1 - late - COPY_CROWD)
             sell(mint, 1.0 if frac > 0.9 else frac, now, f"{kol} sålde {frac * 100:.0f} %")
 
     sol_usd = [0.0]
