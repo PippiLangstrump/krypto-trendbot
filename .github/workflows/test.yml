@@ -18,12 +18,19 @@ jobs:
       - run: |
           python - <<'PY'
           import bot, time
-          w = bot.COPY_WALLETS["West"]
-          for c in ("finalized", "confirmed"):
-              sig = bot._rpc("getSignaturesForAddress", [w, {"limit": 1, "commitment": c}])
-              print("COMMIT", c, "senaste för", round(time.time() - (sig[0]["blockTime"] or 0), 1), "s sedan")
-              tx = bot._rpc("getTransaction", [sig[0]["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1, "commitment": "confirmed"}])
-              print("COMMIT tx ok", bool(tx))
-          bot.COPY_STATE_FILE = "/tmp/a.json"; bot.COPY_SMART_FILE = "/tmp/b.json"
-          bot.run_copy_watch(2)
+          for kol, w in bot.COPY_WALLETS.items():
+              try:
+                  sigs = bot._rpc("getSignaturesForAddress", [w, {"limit": 1000, "commitment": "confirmed"}])
+                  ok = [x for x in sigs if not x.get("err")]
+                  span = (time.time() - sigs[-1]["blockTime"]) / 3600 if sigs else 0
+                  n = 0; last = None
+                  for sg in ok[:40]:
+                      tx = bot._rpc("getTransaction", [sg["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1, "commitment": "confirmed"}])
+                      sw = bot.parse_swap(tx, w)
+                      if sw:
+                          n += 1
+                          last = last or round((time.time() - sg["blockTime"]) / 60)
+                  print("DIAG", kol, "sigs", len(sigs), "täcker", round(span, 2), "h, ok", len(ok), "swappar bland 40 senaste ok", n, "senaste swap för", last, "min sedan")
+              except Exception as e:
+                  print("DIAG", kol, "FEL", str(e)[:120])
           PY
