@@ -3431,9 +3431,14 @@ def _dex(path):
     return json.loads(fetch_text(DEX + path, timeout=20))
 
 
+MEME_FIXED_FEE = 0.50        # prioritetsavgift/Jito-dricks per transaktion i dollar
+
+
 def _gem_cost(usd, liq):
-    """Avgift + prispåverkan (andel) för att handla usd dollar i ett mynt med liq dollar likviditet."""
-    return min(0.9, GEM_FEE + 0.002 + 2 * usd / max(liq, 1.0))   # AMM: påverkan ≈ 2 × affär / likviditet
+    """Allt det kostar att köpa ELLER sälja usd dollar av ett memecoin (andel av beloppet):
+    1 % handelsbot-avgift (Axiom/Photon), 0,5 % DEX-avgift, fast prioritetsavgift och
+    prispåverkan (≈ 2 × affär / likviditet). Samma kostnad igen när man säljer."""
+    return min(0.9, 0.01 + 0.005 + MEME_FIXED_FEE / max(usd, 1.0) + 2 * usd / max(liq, 1.0))
 
 
 def gem_candidates(now_ms):
@@ -3652,6 +3657,8 @@ COPY_MIN_SOL = 0.5           # kopiera alla riktiga köp (hoppar bara över damm
 COPY_MAX_POS = 30
 COPY_STOP = -0.70
 COPY_MAX_HOURS = 48
+COPY_LAG_PENALTY = 0.02      # minst 2 % sämre pris än traderns eget (vi är alltid efter)
+COPY_RESET_MS = 1794553200000   # 13/11 kl 08:00 – nollställd med ärligare räkning
 SOL_RPCS = ["https://solana-rpc.publicnode.com", "https://api.mainnet-beta.solana.com"]   # snabbast först
 WSOL = "So11111111111111111111111111111111111111112"
 STABLES = {"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"}
@@ -3703,9 +3710,9 @@ def parse_swap(tx, wallet):
         return None
     mint, d = best
     if d > 0 and sol < 0:
-        return mint, "buy", -sol, 0.0
+        return mint, "buy", -sol, 0.0, d
     if d < 0 and sol > 0:
-        return mint, "sell", sol, min(1.0, -d / max(pre.get(mint, 0.0), 1e-12))
+        return mint, "sell", sol, min(1.0, -d / max(pre.get(mint, 0.0), 1e-12)), -d
     return None
 
 
@@ -3734,6 +3741,11 @@ def run_copy_watch(minutes=55):
         st = {"start_ms": int(time.time() * 1000), "cash": START_CAPITAL, "pos": {}, "trades": [], "equity": [],
               "last_sig": {}, "seen_kol": {}}
         log("Kopieraren startar med 10 000 låtsas-USDT")
+    if st.get("reset_at", 0) < COPY_RESET_MS:          # nollställd 13/11: ärliga priser + riktiga avgifter
+        now0 = int(time.time() * 1000)
+        log("Kopieraren nollställs till 10 000 låtsas-USDT (ärligare priser och avgifter)")
+        st = {"start_ms": now0, "cash": START_CAPITAL, "pos": {}, "trades": [], "equity": [[now0, START_CAPITAL]],
+              "last_sig": st.get("last_sig", {}), "seen_kol": {}, "reset_at": COPY_RESET_MS}
     end = time.time() + minutes * 60
     last_px = 0
 
@@ -3791,14 +3803,18 @@ def run_copy_watch(minutes=55):
             stop_flag.wait(max(0.0, wait - (time.time() - t0)))
 
     def act(kol, sw, now, block_time):
-        mint, kind, sol_amt, frac = sw
+        mint, kind, sol_amt, frac, tok_amt = sw
         st["seen_kol"][kol] = st["seen_kol"].get(kol, 0) + 1
         lag = (now / 1000 - block_time) if block_time else None
+        kol_px = sol_amt * sol_usd[0] / tok_amt if tok_amt > 0 and sol_usd[0] else None   # traderns eget pris i dollar
+        late = COPY_LAG_PENALTY + 0.005 * max(0.0, (lag or 0) - 2)    # vi kommer in efter dem -> sämre pris
         if kind == "buy" and sol_amt >= COPY_MIN_SOL and mint not in st["pos"] and len(st["pos"]) < COPY_MAX_POS:
             m = _token_market(mint)
             if not m:
                 return
             price, liq, name, url = m
+            if kol_px:
+                price = kol_px * (1 + late)   # traderns eget pris + straff (DexScreener kan visa gammalt pris)
             stake = min(equity() * COPY_STAKE, st["cash"])
             if stake < MIN_TRADE_USDT:
                 return
@@ -3813,7 +3829,12 @@ def run_copy_watch(minutes=55):
             m = _token_market(mint)
             if m:
                 p["price"], p["liq"] = m[0], m[1]
+            if kol_px:
+                p["price"] = kol_px * (1 - late)   # vi säljer efter dem -> lite sämre pris än deras
             sell(mint, 1.0 if frac > 0.9 else frac, now, f"{kol} sålde {frac * 100:.0f} %")
+
+    sol_usd = [0.0]
+    last_sol = 0
 
     threads = [threading.Thread(target=watcher, args=(k, w), daemon=True) for k, w in COPY_WALLETS.items()]
     for i, t in enumerate(threads):
@@ -3822,6 +3843,12 @@ def run_copy_watch(minutes=55):
 
     while time.time() < end:
         now = int(time.time() * 1000)
+        if time.time() - last_sol > 30:
+            try:
+                sol_usd[0] = float(fetch_all_prices().get("SOLUSDT") or sol_usd[0])
+            except Exception:
+                pass
+            last_sol = time.time()
         while not found.empty():
             kol, sw, ts, bt = found.get()
             try:
