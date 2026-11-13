@@ -2917,8 +2917,9 @@ BOT_EXPLAIN = {
               "Lär sig varje traders vanor: hur länge han brukar hålla och vid vilken vinst han börjar sälja. Säljer hälften "
               "strax före hans vanliga vinstnivå och resten strax före hans vanliga säljtid (släpande stopp, stopp −40 %). "
               "Kollar sina mynt varje sekund. Hinner tradern sälja först följer den med. Jämförs mot Bot 8 som härmar exakt.",
-    "Bot 6": "Läser graferna som en teknisk analytiker varje timme: utbrott med volym, dubbelbotten/-topp, trendstruktur "
-             "och RSI-divergens. Stop-loss och vinstmål efter hur mycket myntet svänger. Lär sig: mönster som tjänar pengar live "
+    "Bot 6": "Läser graferna som en teknisk analytiker: letar mönster varje minut (även i ljuset som håller på att bildas) – "
+             "utbrott med volym, dubbelbotten/-topp, trendstruktur och RSI-divergens. Mönstret måste hålla 3 minuter i rad innan köp "
+             "(sorterar bort falska utbrott). Kollar stop-loss och vinstmål varje sekund, efter hur mycket myntet svänger. Lär sig: mönster som tjänar pengar live "
              "får större insats, mönster som förlorar mindre.",
     "Bot 5": "Handlar inte själv. Fördelar sina pengar mellan de andra botarna och flyttar varje vecka mer pengar till de botar som "
              "tjänat mest live senaste veckan (minst 10 % kvar i varje).",
@@ -3405,6 +3406,135 @@ def run_chart_once():
         json.dump(st, f)
     os.replace(CHART_STATE_FILE + ".tmp", CHART_STATE_FILE)
     log(f"Mönsterläsaren: {money(eq)} USDT, {len(st['pos'])} öppna, {len(st['trades'])} avslutade")
+    set_timeframe(TIMEFRAME)
+
+
+def run_chart_watch(minutes=55):
+    """Bot 6 live: kollar stopp/mål varje sekund och letar mönster varje minut i timgrafen
+    (inklusive ljuset som håller på att bildas). Ett mönster måste synas 3 minuter i rad innan köp,
+    så att falska utbrott som vänder direkt sorteras bort."""
+    set_timeframe("1h")
+    st = None
+    if os.path.exists(CHART_STATE_FILE):
+        try:
+            with open(CHART_STATE_FILE, encoding="utf-8") as f:
+                st = json.load(f)
+        except Exception:
+            st = None
+    if not st:
+        now0 = int(time.time() * 1000)
+        st = {"start_ms": now0, "cash": START_CAPITAL, "pos": {}, "trades": [], "equity": [], "last_bar": {},
+              "score": {k: 0.0 for k in CHART_PATTERNS}, "count": {k: 0 for k in CHART_PATTERNS}}
+        log("Mönsterläsaren startar med 10 000 låtsas-USDT")
+    st.setdefault("pending", {})
+    prices = dict(st.get("last_prices", {}))
+    bars = {}
+    end = time.time() + minutes * 60
+    last_scan = last_save = 0
+
+    def equity():
+        return st["cash"] + sum(mark_value(p["cost"], p["entry"], prices.get(s, p["entry"]), p["side"]) for s, p in st["pos"].items())
+
+    def close(sym, px, why, now):
+        p = st["pos"].pop(sym)
+        x = exit_price(px, p["side"])
+        val = trade_value(p["cost"], p["entry"], x, p["side"], (now - p["ts"]) / 3.6e6)
+        st["cash"] += val
+        ret = val / p["cost"] - 1
+        st["trades"].append({"symbol": sym, "side": p["side"], "ret": ret, "pnl": val - p["cost"], "entry_ts": p["ts"],
+                             "exit_ts": now, "reason": why, "pattern": p["pattern"]})
+        st["trades"] = st["trades"][-3000:]
+        k = p["pattern"]
+        st["score"][k] = 0.8 * st["score"].get(k, 0.0) + 0.2 * ret       # lär sig vilka mönster som funkar
+        st["count"][k] = st["count"].get(k, 0) + 1
+        log(f"  Mönster: stänger {sym} ({CHART_PATTERNS[k]}, {why}) {pct(ret)}")
+
+    while time.time() < end:
+        t1 = time.time()
+        now = int(t1 * 1000)
+        try:
+            prices.update(fetch_all_prices())
+        except Exception:
+            time.sleep(1)
+            continue
+        # varje sekund: stopp, vinstmål och tidsgräns
+        for sym, p in list(st["pos"].items()):
+            px = prices.get(sym)
+            if px is None:
+                continue
+            if p["side"] == "long":
+                if px <= p["stop"]:
+                    close(sym, px, "stopp", now)
+                elif px >= p["target"]:
+                    close(sym, px, "vinstmål", now)
+            else:
+                if px >= p["stop"]:
+                    close(sym, px, "stopp", now)
+                elif px <= p["target"]:
+                    close(sym, px, "vinstmål", now)
+            if sym in st["pos"] and now - st["pos"][sym]["ts"] > CHART_MAX_HOURS * 3.6e6:
+                close(sym, px, "tid", now)
+        # varje minut: läs graferna igen och leta mönster
+        if t1 - last_scan >= 60:
+            last_scan = t1
+            for sym in SYMBOLS:
+                try:
+                    b = fetch_klines(sym, 200)
+                except Exception:
+                    continue
+                if len(b) and b.t[-1] + BAR_MS > now:          # ljuset som bildas: räkna upp volymen till en hel timme
+                    frac = max(0.15, (now - b.t[-1]) / BAR_MS)
+                    b.v[-1] = b.v[-1] / frac
+                    b.c[-1] = prices.get(sym, b.c[-1])
+                    b.h[-1] = max(b.h[-1], b.c[-1]); b.l[-1] = min(b.l[-1], b.c[-1])
+                bars[sym] = b
+            eq = equity()
+            for sym, b in bars.items():
+                if not len(b) or sym in st["pos"] or len(st["pos"]) >= CHART_SLOTS:
+                    st["pending"].pop(sym, None)
+                    continue
+                if st["last_bar"].get(sym) == b.t[-1]:            # max en affär per mynt och timljus
+                    continue
+                pats = detect_patterns(b)
+                if not pats:
+                    st["pending"].pop(sym, None)
+                    continue
+                k, d = max(pats, key=lambda x: st["score"].get(x[0], 0.0))
+                pend = st["pending"].get(sym)
+                n = pend[2] + 1 if pend and pend[0] == k and pend[1] == d else 1
+                st["pending"][sym] = [k, d, n]
+                if n < 3:                                         # samma mönster 3 minuter i rad = bekräftat
+                    continue
+                st["pending"].pop(sym, None)
+                mult = max(0.25, min(2.0, math.exp(40 * st["score"].get(k, 0.0))))
+                cost = min(eq * CHART_BASE * mult, st["cash"])
+                atr = _atr(b)
+                if cost < MIN_TRADE_USDT or not atr:
+                    continue
+                side = "long" if d > 0 else "short"
+                e = entry_price(prices.get(sym, b.c[-1]), side)
+                stop = e - 1.5 * atr if side == "long" else e + 1.5 * atr
+                target = e + 3 * atr if side == "long" else e - 3 * atr
+                st["cash"] -= cost
+                st["last_bar"][sym] = b.t[-1]
+                st["pos"][sym] = {"side": side, "entry": e, "cost": cost, "ts": now, "stop": stop, "target": target,
+                                  "pattern": k, "checked": b.t[-1]}
+                log(f"  Mönster: {CHART_PATTERNS[k]} i {sym} -> {'köper' if side == 'long' else 'blankar'} för {money(cost)} USDT")
+        if t1 - last_save >= 60:
+            last_save = t1
+            st["equity"].append([now, round(equity(), 2)])
+            st["equity"] = st["equity"][-6000:]
+            st["last_prices"] = prices
+            with open(CHART_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:
+                json.dump(st, f)
+            os.replace(CHART_STATE_FILE + ".tmp", CHART_STATE_FILE)
+        time.sleep(max(0.0, 1.0 - (time.time() - t1)))
+    st["equity"].append([int(time.time() * 1000), round(equity(), 2)])
+    st["last_prices"] = prices
+    with open(CHART_STATE_FILE + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(st, f)
+    os.replace(CHART_STATE_FILE + ".tmp", CHART_STATE_FILE)
+    log(f"Mönsterläsaren: {money(equity())} USDT, {len(st['pos'])} öppna, {len(st['trades'])} avslutade")
     set_timeframe(TIMEFRAME)
 
 
@@ -4626,6 +4756,8 @@ if __name__ == "__main__":
             write_dashboard()
         elif mode == "chartonce":
             run_chart_once()
+        elif mode == "chartwatch":
+            run_chart_watch(float(args[1]) if len(args) > 1 else 55)
         elif mode == "league":
             run_league()
         elif mode == "fundingonce":
