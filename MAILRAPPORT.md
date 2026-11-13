@@ -1,4 +1,4 @@
-## 🕐 Kl 12:00 – 13/11
+## 🕐 Kl 13:00 – 13/11
 <sub>Låtsaspengar · varje bot startade med 99 836 kr</sub>
 
 Status: ✅ igång – kollade priserna 3 540 gånger senaste körningen  
@@ -8,10 +8,10 @@ Bästa affär hittills: PEPE (köpt, såld) −2,8 % = −293 kr
 Sämsta affär hittills: PEPE (köpt, såld) −2,8 % = −293 kr  
 Äger/blankar: inget – väntar på bättre läge
 
-Status: ✅ igång – kollade priserna 3 519 gånger senaste körningen  
-**Bot 2 – köper och blankar: har 104 234 kr** – har tjänat 4 398 kr totalt (+4,4 %)  
-Senaste dygnet: +3 341 kr · Affärer idag: 11 · totalt: 20  
-Bästa affär hittills: BTC (blankat, pågår) +6,0 % = +688 kr  
+Status: ✅ igång – kollade priserna 3 520 gånger senaste körningen  
+**Bot 2 – köper och blankar: har 104 156 kr** – har tjänat 4 320 kr totalt (+4,3 %)  
+Senaste dygnet: +2 129 kr · Affärer idag: 11 · totalt: 20  
+Bästa affär hittills: BTC (blankat, pågår) +6,0 % = +692 kr  
 Sämsta affär hittills: PEPE (köpt, såld) −2,6 % = −169 kr  
 Äger/blankar: BNB (blankat), BONK (blankat), DOGE (blankat), ETH (blankat), SOL (blankat), WIF (blankat), XRP (blankat), BTC (blankat), ADA (blankat), FLOKI (blankat), LINK (blankat), SHIB (blankat), SUI (blankat)
 
@@ -22,25 +22,25 @@ Bästa just nu: WIF −0,1 % = −26 kr
 Sämsta just nu: FLOKI −0,1 % = −31 kr  
 Samlar på: XRP, BTC, WIF, FLOKI
 
-**Bot 4 – daytradern: har 99 212 kr** – har förlorat 624 kr totalt (−0,6 %)  
-Senaste dygnet: −624 kr · Affärer senaste timmen: 2 · idag: 32 · totalt: 40 · vinstandel: 52 %  
+**Bot 4 – daytradern: har 98 903 kr** – har förlorat 933 kr totalt (−0,9 %)  
+Senaste dygnet: −933 kr · Affärer senaste timmen: 3 · idag: 35 · totalt: 43 · vinstandel: 53 %  
 Bästa affär: ETH (blankat) +2,6 % = +773 kr  
 Sämsta affär: PEPE (blankat) −1,8 % = −521 kr  
-Öppna just nu: SHIB (köpt), BONK (blankat), SUI (köpt), BNB (köpt), BTC (köpt)
+Öppna just nu: BONK (blankat), SUI (köpt), BTC (köpt)
 
-**Bot 5 – lagledaren (fördelar mellan de andra): har 98 631 kr** – har förlorat 1 205 kr totalt (−1,2 %)  
-Senaste dygnet: −1 205 kr · Fördelning: Bot 1 20 %, Bot 2 21 %, Bot 3 20 %, Bot 4 19 %, Bot 6 20 % · nästa omfördelning 2026-11-19
+**Bot 5 – lagledaren (fördelar mellan de andra): har 98 548 kr** – har förlorat 1 288 kr totalt (−1,3 %)  
+Senaste dygnet: −1 288 kr · Fördelning: Bot 1 20 %, Bot 2 21 %, Bot 3 20 %, Bot 4 19 %, Bot 6 20 % · nästa omfördelning 2026-11-19
 
-**Bot 6 – mönsterläsaren: har 99 320 kr** – har förlorat 516 kr totalt (−0,5 %)  
-Senaste dygnet: −516 kr · öppna: 4 · avslutade: 9  
+**Bot 6 – mönsterläsaren: har 99 267 kr** – har förlorat 569 kr totalt (−0,6 %)  
+Senaste dygnet: −569 kr · öppna: 4 · avslutade: 9  
 Bästa affär: FLOKI (Trendstruktur + rekyl) +3,3 % = +650 kr  
 Sämsta affär: XRP (Utbrott med volym) −1,9 % = −542 kr  
 Öppna: SOL (blankat, Utbrott med volym), BTC (blankat, Utbrott med volym), XRP (blankat, Trendstruktur + rekyl), WIF (blankat, Trendstruktur + rekyl)  
 Mönstrens betyg (lärt sig hittills): Utbrott med volym −0,5 % (8 st), Trendstruktur + rekyl +0,7 % (1 st)
 
-**Bot 7 – myntjägaren: har 96 621 kr** – har förlorat 3 215 kr totalt (−3,2 %)  
-Senaste dygnet: −3 149 kr · lotter: 14 · månbiljetter (2x+): 1 · försäljningar: 4  
-Bästa lott just nu: :3 (solana) 2.06x
+**Bot 7 – myntjägaren: har 96 841 kr** – har förlorat 2 995 kr totalt (−3,0 %)  
+Senaste dygnet: −2 930 kr · lotter: 15 · månbiljetter (2x+): 1 · försäljningar: 4  
+Bästa lott just nu: :3 (solana) 1.82x
 
 **Bot 8 – kopieraren: har 99 837 kr** – har tjänat 1 kr totalt (+0,0 %)  
 Senaste dygnet: +1 kr · öppna: 0 · försäljningar: 7  
