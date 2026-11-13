@@ -2916,7 +2916,7 @@ BOT_EXPLAIN = {
     "Bot 8,5": "Köper samma mynt som Bot 8 när de kända traderna köper, men säljer själv INNAN de brukar sälja. "
               "Lär sig varje traders vanor: hur länge han brukar hålla och vid vilken vinst han börjar sälja. Säljer hälften "
               "strax före hans vanliga vinstnivå och resten strax före hans vanliga säljtid (släpande stopp, stopp −40 %). "
-              "Kollar sina mynt var 3:e sekund. Hinner tradern sälja först följer den med. Jämförs mot Bot 8 som härmar exakt.",
+              "Kollar sina mynt varje sekund. Hinner tradern sälja först följer den med. Jämförs mot Bot 8 som härmar exakt.",
     "Bot 6": "Läser graferna som en teknisk analytiker varje timme: utbrott med volym, dubbelbotten/-topp, trendstruktur "
              "och RSI-divergens. Stop-loss och vinstmål efter hur mycket myntet svänger. Lär sig: mönster som tjänar pengar live "
              "får större insats, mönster som förlorar mindre.",
@@ -3954,8 +3954,8 @@ def run_copy_watch(minutes=55):
                 act(kol, sw, ts, bt)
             except Exception as e:
                 log(f"  Kopieraren: kunde inte kopiera {kol} ({e})")
-        # Bot 8,5: kolla sina mynt var 3:e sekund och sälj själv innan kändisen
-        if time.time() - last_fast >= 3 and smart.st["pos"]:
+        # Bot 8,5: kolla sina mynt varje sekund och sälj själv innan kändisen (DexScreener tillåter 5 anrop/s)
+        if time.time() - last_fast >= 1 and smart.st["pos"]:
             last_fast = time.time()
             mints = list(smart.st["pos"])
             for i in range(0, len(mints), 30):
