@@ -31,4 +31,8 @@ jobs:
               --body "Varje morgon kl 06: nattens resultat för alla botar. @PippiLangstrump")
             ISSUE=${URL##*/}
           fi
+          H=$(TZ=Europe/Stockholm date +%H)
+          if [ "$H" \< "05" ] || [ "$H" \> "11" ]; then echo "Fel tid ($H) - hoppar över"; exit 0; fi
+          LAST=$(gh api "repos/${{ github.repository }}/issues/$ISSUE/comments?per_page=100" --jq '.[-1].body' | head -1 || true)
+          if [ "$LAST" = "$(head -1 MORGONRAPPORT.md)" ]; then echo "Redan skickad idag"; exit 0; fi
           gh issue comment "$ISSUE" --body-file MORGONRAPPORT.md

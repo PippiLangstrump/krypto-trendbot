@@ -92,6 +92,14 @@ jobs:
             ISSUE=${URL##*/}
           fi
           gh issue comment "$ISSUE" --body-file MAILRAPPORT.md
+      - name: Morgon- och kvällsrapport i tid (GitHubs schema kan vara timmar sent)
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          H=$(TZ=Europe/Stockholm date -d '+10 min' +%H)
+          if [ "$H" = "06" ]; then gh workflow run morgon.yml --ref main || true; fi
+          if [ "$H" = "20" ]; then gh workflow run kvall.yml --ref main || true; fi
       - name: Starta nästa timme direkt (så det aldrig blir glapp)
         if: always()
         env:
