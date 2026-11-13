@@ -2925,12 +2925,12 @@ BOT_EXPLAIN = {
 }
 
 
-def _mini_svg(points, rate, color):
+def _mini_svg(points, rate, color, base_usd=None):
     if len(points) < 2:
         return "<div class='small'>Grafen dyker upp när boten kört en stund.</div>"
     W, H, P = 600, 170, 8
     xs = [p[0] for p in points]; ys = [p[1] * rate for p in points]
-    base = START_CAPITAL * rate
+    base = (base_usd or START_CAPITAL) * rate
     y0, y1 = min(min(ys), base), max(max(ys), base)
     if y1 - y0 < 1:
         y0 -= 1; y1 += 1
@@ -3181,6 +3181,31 @@ def write_dashboard():
         guard.append(f"⚠️ Social vakt aktiv: {_h.escape(soc.get('reason', ''))}")
     news = (data[1][4]["st"].get("news", []) if len(data) > 1 else [])[:8]
     nrows = "".join(f"<li>{_h.escape(x['title'])}</li>" for x in news)
+    # totalen: alla botars pengar ihop (en bot som inte startat än räknas som orörda 10 000)
+    n_b = len(data)
+    tot_eq = sum(d["eq"] for *_x, d in data)
+    tot_start = n_b * START_CAPITAL
+    tot_d24 = sum(d["d24"] for *_x, d in data)
+    t0 = min((d["eqh"][0][0] for *_x, d in data if d["eqh"]), default=now_ms)
+    tot_pts = []
+    for ts in range(t0, now_ms, 3600000):
+        v = 0.0
+        for *_x, d in data:
+            e = START_CAPITAL
+            for t_, e_ in d["eqh"]:
+                if t_ > ts:
+                    break
+                e = e_
+            v += e
+        tot_pts.append([ts, v])
+    tot_pts.append([now_ms, tot_eq])
+    tot_cls = "pos" if tot_eq >= tot_start else "neg"
+    total_box = (f'<div class="card"><div class="name">💰 Total balans – alla {n_b} botar ihop</div>'
+                 f'<div class="big">{kr(tot_eq * rate)}</div>'
+                 f'<div class="{tot_cls}">{kr((tot_eq - tot_start) * rate, sign=True)} totalt ({pct_sv(tot_eq / tot_start - 1)})</div>'
+                 f'<div class="small">Startade med {kr(tot_start * rate)} ({n_b} botar × 10 000 dollar ≈ {kr(START_CAPITAL * rate)} var) · '
+                 f'senaste dygnet: <span class="{"pos" if tot_eq >= tot_d24 else "neg"}">{kr((tot_eq - tot_d24) * rate, sign=True)}</span></div>'
+                 f'{_mini_svg(tot_pts, rate, "#f5c542", tot_start)}</div>')
     html = f"""<!DOCTYPE html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="300"><title>Kryptobotarna</title>
 <style>body{{background:#0f1115;color:#e6e6e6;font-family:-apple-system,Segoe UI,system-ui,sans-serif;margin:0;padding:16px;max-width:960px;margin:auto}}
@@ -3192,6 +3217,7 @@ h1{{font-size:22px;margin:4px 0}} h2{{font-size:16px;color:#bbb;margin:22px 0 8p
 .info{{color:#7cb7ff;font-size:12px}} .sub{{color:#bbb;font-size:13px;font-weight:600;margin:12px 0 4px}}
 .scroll{{max-height:300px;overflow:auto}} details table{{display:block;overflow-x:auto;white-space:nowrap}} .th td{{color:#888;font-size:11px}} .tiny{{color:#888;font-size:11px;margin-top:3px}} .b{{font-size:11px;padding:2px 6px;border-radius:8px;white-space:nowrap}} .b.open{{background:#173b2e;color:#5fd3a5}} .b.done{{background:#2a2e38;color:#aaa}} details table td{{font-size:12px;padding:4px}} .explain{{background:#11141a;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;color:#ccc;line-height:1.45}} ul{{padding-left:18px;font-size:13px;color:#bbb}}</style></head><body>
 <h1>📈 Kryptobotarna</h1><div class="muted">Låtsaspengar, riktiga priser · uppdaterad {_se_now().strftime('%d/%m %H:%M')} · laddar om var 5:e minut</div>
+{total_box}
 <h2>Alla botar – % sedan start</h2><div class="box">{svg}<div class="legend">{''.join(f"<span style='color:{c}'>● {n}</span>" for n, _, _, c, _ in data)}</div></div>
 <h2>Går de upp stadigt – eller var det tur?</h2><div class="box">{cons_table}
 <div class="tiny">Stabilitet = avkastning delat med hur mycket den svänger (per år). Över 1 är bra, över 2 mycket bra. Måtten blir pålitliga först efter ungefär en vecka – en enda bra dag kan vara tur.</div></div>
