@@ -3852,7 +3852,7 @@ def run_copy_watch(minutes=55):
             t0 = time.time()
             try:
                 last = st["last_sig"].get(kol)
-                opts = {"limit": 1000}   # kända plånböcker får ~20 skräptransaktioner/s, filtreras bort nedan
+                opts = {"limit": 1000, "commitment": "confirmed"}   # "confirmed" = ~1 s, standard "finalized" = ~13 s
                 if last:
                     opts["until"] = last
                 sigs = _rpc("getSignaturesForAddress", [wallet, opts])
@@ -3861,7 +3861,8 @@ def run_copy_watch(minutes=55):
                     ok = [x for x in sigs if not x.get("err")][:15] if last else []
                     for sg in reversed(ok):
                         try:
-                            tx = _rpc("getTransaction", [sg["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}])
+                            tx = _rpc("getTransaction", [sg["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1,
+                                                                            "commitment": "confirmed"}])
                             sw = parse_swap(tx, wallet)
                         except Exception:
                             continue

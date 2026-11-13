@@ -17,22 +17,13 @@ jobs:
           python-version: "3.12"
       - run: |
           python - <<'PY'
-          import bot, time, json
-          import xml.etree.ElementTree as ET
-          mk = bot.news9_markets()
-          print("MARKETS", len(mk))
-          n = 0
-          for url in bot.NEWS9_FEEDS:
-              try:
-                  root = ET.fromstring(bot.fetch_text(url))
-                  items = [(it.findtext("title") or "").strip() for it in root.iter("item")]
-                  print("FEED", url.split("/")[2], len(items))
-              except Exception as e:
-                  print("FEED", url.split("/")[2], "FEL", str(e)[:60]); continue
-              for t_ in items:
-                  m = bot.news9_match(t_, mk); c = bot.news9_catalyst(t_)
-                  if m and c:
-                      n += 1
-                      print("  TRÄFF", c[0], m["symbol"].upper(), m.get("market_cap_rank"), round((m.get("market_cap") or 0) / 1e6), "M$", round(m.get("price_change_percentage_24h") or 0, 1), "%", "|", t_[:100])
-          print("TRÄFFAR", n)
+          import bot, time
+          w = bot.COPY_WALLETS["West"]
+          for c in ("finalized", "confirmed"):
+              sig = bot._rpc("getSignaturesForAddress", [w, {"limit": 1, "commitment": c}])
+              print("COMMIT", c, "senaste för", round(time.time() - (sig[0]["blockTime"] or 0), 1), "s sedan")
+              tx = bot._rpc("getTransaction", [sig[0]["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1, "commitment": "confirmed"}])
+              print("COMMIT tx ok", bool(tx))
+          bot.COPY_STATE_FILE = "/tmp/a.json"; bot.COPY_SMART_FILE = "/tmp/b.json"
+          bot.run_copy_watch(2)
           PY
