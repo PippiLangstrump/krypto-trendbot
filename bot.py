@@ -3207,7 +3207,9 @@ def write_dashboard():
                  f'senaste dygnet: <span class="{"pos" if tot_eq >= tot_d24 else "neg"}">{kr((tot_eq - tot_d24) * rate, sign=True)}</span></div>'
                  f'{_mini_svg(tot_pts, rate, "#f5c542", tot_start)}</div>')
     html = f"""<!DOCTYPE html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="300"><title>Kryptobotarna</title>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"><title>Kryptobotarna</title>
+<script>setTimeout(function(){{location.replace(location.pathname+'?t='+Date.now())}},300000);
+document.addEventListener('visibilitychange',function(){{if(!document.hidden&&Date.now()-performance.timeOrigin>300000)location.replace(location.pathname+'?t='+Date.now())}});</script>
 <style>body{{background:#0f1115;color:#e6e6e6;font-family:-apple-system,Segoe UI,system-ui,sans-serif;margin:0;padding:16px;max-width:960px;margin:auto}}
 h1{{font-size:22px;margin:4px 0}} h2{{font-size:16px;color:#bbb;margin:22px 0 8px}} .muted,.small{{color:#999;font-size:13px}}
 .card{{background:#181b22;border-radius:10px;padding:12px 14px;margin:10px 0;position:relative}} .rank{{position:absolute;right:14px;top:10px;color:#666;font-size:20px}}
