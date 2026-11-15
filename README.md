@@ -6,14 +6,14 @@ Detaljerade rapporter: trend_rapport_live.html och trend_rapport_live_langkort.h
 
 ## Trendbot (bara lång)
 
-Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-15 21:59 (UTC)
+Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-15 22:59 (UTC)
 
 ![Kapital över tid](graf_lang.svg)
 
 | | |
 |---|---|
 | Kapital | **9 970.68 USDT** (-0.29%) |
-| Köp & håll samma tid | -11.65% |
+| Köp & håll samma tid | -11.30% |
 | Avslutade affärer | 1 (0 % vinster) |
 | Snitt per affär | -2.76% |
 | Bästa | -2.76% PEPEUSDT |
@@ -27,14 +27,14 @@ Rädsla/girighet: **10** (Extreme Fear)
 
 ## Trendbot (lång + kort)
 
-Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-15 21:59 (UTC)
+Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-15 22:59 (UTC)
 
 ![Kapital över tid](graf_langkort.svg)
 
 | | |
 |---|---|
-| Kapital | **11 253.69 USDT** (+12.54%) |
-| Köp & håll samma tid | -11.60% |
+| Kapital | **11 236.94 USDT** (+12.37%) |
+| Köp & håll samma tid | -11.26% |
 | Avslutade affärer | 17 (94 % vinster) |
 | Snitt per affär | +6.65% |
 | Bästa | +13.79% BONKUSDT |
@@ -45,8 +45,8 @@ Spärrade p.g.a. nyheter: AVAXUSDT, SHIBUSDT, SUIUSDT, ADAUSDT, LINKUSDT, FLOKIU
 
 | Position | Sida | Insats | Resultat |
 |---|---|---|---|
-| BNBUSDT | Kort | 1 024.72 | +13.39% |
-| DOGEUSDT | Kort | 908.75 | +13.79% |
-| ETHUSDT | Kort | 837.19 | +12.07% |
-| SOLUSDT | Kort | 968.49 | +14.83% |
-| BTCUSDT | Kort | 130.48 | -1.49% |
+| BNBUSDT | Kort | 1 024.72 | +13.04% |
+| DOGEUSDT | Kort | 908.75 | +13.27% |
+| ETHUSDT | Kort | 837.19 | +11.72% |
+| SOLUSDT | Kort | 968.49 | +14.28% |
+| BTCUSDT | Kort | 130.48 | -1.78% |
