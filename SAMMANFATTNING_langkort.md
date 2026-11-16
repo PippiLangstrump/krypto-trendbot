@@ -1,13 +1,13 @@
 ## Trendbot (lång + kort)
 
-Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-15 22:59 (UTC)
+Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-15 23:59 (UTC)
 
 ![Kapital över tid](graf_langkort.svg)
 
 | | |
 |---|---|
-| Kapital | **11 236.94 USDT** (+12.37%) |
-| Köp & håll samma tid | -11.26% |
+| Kapital | **11 219.40 USDT** (+12.19%) |
+| Köp & håll samma tid | -10.94% |
 | Avslutade affärer | 17 (94 % vinster) |
 | Snitt per affär | +6.65% |
 | Bästa | +13.79% BONKUSDT |
@@ -18,8 +18,8 @@ Spärrade p.g.a. nyheter: AVAXUSDT, SHIBUSDT, SUIUSDT, ADAUSDT, LINKUSDT, FLOKIU
 
 | Position | Sida | Insats | Resultat |
 |---|---|---|---|
-| BNBUSDT | Kort | 1 024.72 | +13.04% |
-| DOGEUSDT | Kort | 908.75 | +13.27% |
-| ETHUSDT | Kort | 837.19 | +11.72% |
-| SOLUSDT | Kort | 968.49 | +14.28% |
-| BTCUSDT | Kort | 130.48 | -1.78% |
+| BNBUSDT | Kort | 1 024.72 | +12.88% |
+| DOGEUSDT | Kort | 908.75 | +12.47% |
+| ETHUSDT | Kort | 837.19 | +11.26% |
+| SOLUSDT | Kort | 968.49 | +13.83% |
+| BTCUSDT | Kort | 130.48 | -2.01% |
