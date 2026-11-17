@@ -6,14 +6,14 @@ Detaljerade rapporter: trend_rapport_live.html och trend_rapport_live_langkort.h
 
 ## Trendbot (bara lång)
 
-Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-17 15:59 (UTC)
+Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-17 16:59 (UTC)
 
 ![Kapital över tid](graf_lang.svg)
 
 | | |
 |---|---|
 | Kapital | **9 970.68 USDT** (-0.29%) |
-| Köp & håll samma tid | -12.99% |
+| Köp & håll samma tid | -13.40% |
 | Avslutade affärer | 1 (0 % vinster) |
 | Snitt per affär | -2.76% |
 | Bästa | -2.76% PEPEUSDT |
@@ -27,14 +27,14 @@ Rädsla/girighet: **12** (Extreme Fear)
 
 ## Trendbot (lång + kort)
 
-Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-17 15:59 (UTC)
+Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-17 16:59 (UTC)
 
 ![Kapital över tid](graf_langkort.svg)
 
 | | |
 |---|---|
-| Kapital | **11 352.00 USDT** (+13.52%) |
-| Köp & håll samma tid | -12.99% |
+| Kapital | **11 391.40 USDT** (+13.91%) |
+| Köp & håll samma tid | -13.36% |
 | Avslutade affärer | 18 (94 % vinster) |
 | Snitt per affär | +7.00% |
 | Bästa | +13.79% BONKUSDT |
@@ -45,17 +45,17 @@ Spärrade p.g.a. nyheter: SOLUSDT
 
 | Position | Sida | Insats | Resultat |
 |---|---|---|---|
-| BNBUSDT | Kort | 1 024.72 | +14.21% |
-| DOGEUSDT | Kort | 908.75 | +14.66% |
-| ETHUSDT | Kort | 837.19 | +13.68% |
-| BTCUSDT | Kort | 1 131.20 | +1.51% |
-| PEPEUSDT | Kort | 440.99 | +3.82% |
-| ADAUSDT | Kort | 707.45 | +0.73% |
-| AVAXUSDT | Kort | 635.82 | +0.30% |
-| BONKUSDT | Kort | 540.36 | +0.38% |
-| FLOKIUSDT | Kort | 666.48 | +3.09% |
-| LINKUSDT | Kort | 670.67 | +0.33% |
-| SHIBUSDT | Kort | 869.46 | +1.50% |
-| SUIUSDT | Kort | 647.46 | -0.09% |
-| WIFUSDT | Kort | 645.36 | +1.65% |
-| XRPUSDT | Kort | 56.30 | -0.55% |
+| BNBUSDT | Kort | 1 024.72 | +14.63% |
+| DOGEUSDT | Kort | 908.75 | +14.91% |
+| ETHUSDT | Kort | 837.19 | +14.02% |
+| BTCUSDT | Kort | 1 131.20 | +2.11% |
+| PEPEUSDT | Kort | 440.99 | +4.33% |
+| ADAUSDT | Kort | 707.45 | +0.99% |
+| AVAXUSDT | Kort | 635.82 | +1.02% |
+| BONKUSDT | Kort | 540.36 | +0.81% |
+| FLOKIUSDT | Kort | 666.48 | +3.42% |
+| LINKUSDT | Kort | 670.67 | +0.39% |
+| SHIBUSDT | Kort | 869.46 | +2.02% |
+| SUIUSDT | Kort | 647.46 | +0.37% |
+| WIFUSDT | Kort | 645.36 | +1.95% |
+| XRPUSDT | Kort | 56.30 | -0.21% |
