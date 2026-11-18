@@ -1,6 +1,6 @@
 ## Trendbot (bara lång)
 
-Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-18 19:59 (UTC)
+Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-18 20:59 (UTC)
 
 ![Kapital över tid](graf_lang.svg)
 
