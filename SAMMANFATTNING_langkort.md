@@ -1,13 +1,13 @@
 ## Trendbot (lång + kort)
 
-Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-19 21:59 (UTC)
+Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-19 22:59 (UTC)
 
 ![Kapital över tid](graf_langkort.svg)
 
 | | |
 |---|---|
-| Kapital | **11 579.91 USDT** (+15.80%) |
-| Köp & håll samma tid | -14.81% |
+| Kapital | **11 472.45 USDT** (+14.72%) |
+| Köp & håll samma tid | -13.91% |
 | Avslutade affärer | 19 (95 % vinster) |
 | Snitt per affär | +7.24% |
 | Bästa | +13.79% BONKUSDT |
@@ -17,18 +17,18 @@ Rädsla/girighet: **10** (Extreme Fear)
 
 | Position | Sida | Insats | Resultat |
 |---|---|---|---|
-| BNBUSDT | Kort | 1 024.72 | +15.87% |
-| ETHUSDT | Kort | 837.19 | +15.85% |
-| BTCUSDT | Kort | 1 131.20 | +5.52% |
-| PEPEUSDT | Kort | 440.99 | +5.11% |
-| ADAUSDT | Kort | 707.45 | +1.91% |
-| AVAXUSDT | Kort | 635.82 | +3.07% |
-| BONKUSDT | Kort | 540.36 | +2.52% |
-| FLOKIUSDT | Kort | 666.48 | +6.99% |
-| LINKUSDT | Kort | 670.67 | +2.87% |
-| SHIBUSDT | Kort | 869.46 | +2.79% |
-| SUIUSDT | Kort | 647.46 | +2.77% |
-| WIFUSDT | Kort | 645.36 | +3.58% |
-| XRPUSDT | Kort | 770.42 | +2.72% |
-| DOGEUSDT | Kort | 819.74 | +1.94% |
-| SOLUSDT | Kort | 573.06 | +1.79% |
+| BNBUSDT | Kort | 1 024.72 | +15.17% |
+| ETHUSDT | Kort | 837.19 | +14.93% |
+| BTCUSDT | Kort | 1 131.20 | +4.55% |
+| PEPEUSDT | Kort | 440.99 | +4.08% |
+| ADAUSDT | Kort | 707.45 | +1.06% |
+| AVAXUSDT | Kort | 635.82 | +1.86% |
+| BONKUSDT | Kort | 540.36 | +1.23% |
+| FLOKIUSDT | Kort | 666.48 | +5.96% |
+| LINKUSDT | Kort | 670.67 | +1.68% |
+| SHIBUSDT | Kort | 869.46 | +2.28% |
+| SUIUSDT | Kort | 647.46 | +1.69% |
+| WIFUSDT | Kort | 645.36 | +2.62% |
+| XRPUSDT | Kort | 770.42 | +1.88% |
+| DOGEUSDT | Kort | 819.74 | +0.80% |
+| SOLUSDT | Kort | 573.06 | +0.39% |
