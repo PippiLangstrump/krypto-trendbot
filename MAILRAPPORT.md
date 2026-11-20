@@ -1,17 +1,17 @@
-## 🕐 Kl 11:00 – 20/11
+## 🕐 Kl 12:00 – 20/11
 <sub>Låtsaspengar · varje bot startade med 101 410 kr</sub>
 
-Status: ✅ igång – kollade priserna 3 552 gånger senaste körningen  
+Status: ✅ igång – kollade priserna 3 546 gånger senaste körningen  
 **Bot 1 – köper bara: har 101 113 kr** – har förlorat 297 kr totalt (−0,3 %)  
 Senaste dygnet: +0 kr · Affärer idag: 0 · totalt: 1  
 Bästa affär hittills: PEPE (köpt, såld) −2,8 % = −297 kr  
 Sämsta affär hittills: PEPE (köpt, såld) −2,8 % = −297 kr  
 Äger/blankar: inget – väntar på bättre läge
 
-Status: ✅ igång – kollade priserna 3 531 gånger senaste körningen  
-**Bot 2 – köper och blankar: har 118 234 kr** – har tjänat 16 824 kr totalt (+16,6 %)  
-Senaste dygnet: +4 428 kr · Affärer idag: 0 · totalt: 34  
-Bästa affär hittills: BNB (blankat, pågår) +16,6 % = +1 724 kr  
+Status: ✅ igång – kollade priserna 3 525 gånger senaste körningen  
+**Bot 2 – köper och blankar: har 117 852 kr** – har tjänat 16 442 kr totalt (+16,2 %)  
+Senaste dygnet: +3 824 kr · Affärer idag: 0 · totalt: 34  
+Bästa affär hittills: BNB (blankat, pågår) +16,1 % = +1 676 kr  
 Sämsta affär hittills: PEPE (köpt, såld) −2,6 % = −172 kr  
 Äger/blankar: BNB (blankat), ETH (blankat), BTC (blankat), PEPE (blankat), ADA (blankat), AVAX (blankat), BONK (blankat), FLOKI (blankat), LINK (blankat), SHIB (blankat), SUI (blankat), WIF (blankat), XRP (blankat), DOGE (blankat), SOL (blankat)
 
@@ -22,36 +22,36 @@ Bästa just nu: FLOKI −0,1 % = −21 kr
 Sämsta just nu: BNB −0,1 % = −32 kr  
 Samlar på: FLOKI, SHIB, BNB, LINK
 
-**Bot 4 – daytradern: har 88 476 kr** – har förlorat 12 934 kr totalt (−12,8 %)  
-Senaste dygnet: −4 847 kr · Affärer senaste timmen: 3 · idag: 22 · totalt: 360 · vinstandel: 44 %  
+**Bot 4 – daytradern: har 88 591 kr** – har förlorat 12 819 kr totalt (−12,6 %)  
+Senaste dygnet: −4 536 kr · Affärer senaste timmen: 0 · idag: 22 · totalt: 360 · vinstandel: 44 %  
 Bästa affär: BONK (blankat) +6,9 % = +1 322 kr  
 Sämsta affär: PEPE (köpt) −1,8 % = −562 kr  
 Öppna just nu: BONK (blankat)
 
-**Bot 5 – lagledaren (fördelar mellan de andra): har 101 922 kr** – har tjänat 512 kr totalt (+0,5 %)  
-Senaste dygnet: +2 151 kr · Fördelning: Bot 1 7 %, Bot 2 73 %, Bot 3 7 %, Bot 4 7 %, Bot 6 7 % · nästa omfördelning 2026-11-26
+**Bot 5 – lagledaren (fördelar mellan de andra): har 101 678 kr** – har tjänat 268 kr totalt (+0,3 %)  
+Senaste dygnet: +1 944 kr · Fördelning: Bot 1 7 %, Bot 2 72 %, Bot 3 7 %, Bot 4 7 %, Bot 6 7 % · nästa omfördelning 2026-11-26
 
-**Bot 6 – mönsterläsaren: har 97 000 kr** – har förlorat 4 410 kr totalt (−4,3 %)  
-Senaste dygnet: −966 kr · öppna: 4 · avslutade: 62  
+**Bot 6 – mönsterläsaren: har 96 802 kr** – har förlorat 4 608 kr totalt (−4,5 %)  
+Senaste dygnet: −1 192 kr · öppna: 4 · avslutade: 62  
 Bästa affär: SOL (Utbrott med volym) +3,7 % = +1 212 kr  
 Sämsta affär: XRP (Utbrott med volym) −2,7 % = −1 157 kr  
 Öppna: BTC (blankat, Utbrott med volym), FLOKI (blankat, Utbrott med volym), BNB (blankat, Dubbelbotten/-topp), DOGE (blankat, Dubbelbotten/-topp)  
 Mönstrens betyg (lärt sig hittills): Utbrott med volym −1,9 % (35 st), Dubbelbotten/-topp −1,6 % (8 st), Trendstruktur + rekyl −0,8 % (19 st)
 
-**Bot 7 – myntjägaren: har 53 946 kr** – har förlorat 47 464 kr totalt (−46,8 %)  
-Senaste dygnet: −3 906 kr · lotter: 11 · månbiljetter (2x+): 2 · försäljningar: 78  
-Bästa lott just nu: DIGS (solana) 2.36x
+**Bot 7 – myntjägaren: har 53 776 kr** – har förlorat 47 634 kr totalt (−47,0 %)  
+Senaste dygnet: −4 419 kr · lotter: 10 · månbiljetter (2x+): 2 · försäljningar: 79  
+Bästa lott just nu: DIGS (solana) 2.41x
 
 **Bot 8 – kopieraren: har 9 740 kr** – har förlorat 91 670 kr totalt (−90,4 %)  
-Senaste dygnet: −590 kr · öppna: 9 · försäljningar: 1137  
+Senaste dygnet: −366 kr · öppna: 9 · försäljningar: 1137  
 Resultat per trader: Decu −7,1 %, Trunoest −22,4 %, Kadenox −24,3 %, Cented −27,5 %, Kev −32,1 %, West −33,8 %, Theo −37,2 %, Yugi −37,4 %, Pain −49,8 %, Cupsey −66,9 %
 
 **Bot 8,5 – smarta kopieraren: har 10 128 kr** – har förlorat 91 282 kr totalt (−90,0 %)  
-Senaste dygnet: −4 048 kr · öppna: 0 · försäljningar: 1725  
+Senaste dygnet: −4 019 kr · öppna: 0 · försäljningar: 1725  
 Resultat per trader: Pain +0,9 %, Yugi −8,8 %, Decu −11,2 %, Cupsey −13,4 %, Trunoest −14,6 %, Theo −17,9 %, West −19,3 %, Kadenox −21,3 %, Cented −24,7 %, Kev −35,1 %
 
-**Bot 9 – nyhetsjägaren: har 101 346 kr** – har förlorat 64 kr totalt (−0,1 %)  
-Senaste dygnet: −64 kr · öppna: ASSET (lansering)  
+**Bot 9 – nyhetsjägaren: har 101 352 kr** – har förlorat 58 kr totalt (−0,1 %)  
+Senaste dygnet: −36 kr · öppna: ASSET (lansering)  
 Senaste köpnyhet: Ant International launches protocol for real-time settlement between tokenized deposits and money market funds
 
 <sub>1 dollar = 10.14 kr · @PippiLangstrump</sub>
