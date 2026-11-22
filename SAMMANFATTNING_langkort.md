@@ -1,13 +1,13 @@
 ## Trendbot (lång + kort)
 
-Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-22 09:59 (UTC)
+Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-22 10:59 (UTC)
 
 ![Kapital över tid](graf_langkort.svg)
 
 | | |
 |---|---|
 | Kapital | **12 119.85 USDT** (+21.20%) |
-| Köp & håll samma tid | -17.86% |
+| Köp & håll samma tid | -18.02% |
 | Avslutade affärer | 32 (97 % vinster) |
 | Snitt per affär | +8.32% |
 | Bästa | +19.12% BNBUSDT |
