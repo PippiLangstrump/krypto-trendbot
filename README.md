@@ -6,14 +6,14 @@ Detaljerade rapporter: trend_rapport_live.html och trend_rapport_live_langkort.h
 
 ## Trendbot (bara lång)
 
-Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-22 06:59 (UTC)
+Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-22 07:59 (UTC)
 
 ![Kapital över tid](graf_lang.svg)
 
 | | |
 |---|---|
 | Kapital | **9 970.68 USDT** (-0.29%) |
-| Köp & håll samma tid | -20.19% |
+| Köp & håll samma tid | -20.08% |
 | Avslutade affärer | 1 (0 % vinster) |
 | Snitt per affär | -2.76% |
 | Bästa | -2.76% PEPEUSDT |
@@ -27,14 +27,14 @@ Rädsla/girighet: **11** (Extreme Fear)
 
 ## Trendbot (lång + kort)
 
-Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-22 06:59 (UTC)
+Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-22 07:59 (UTC)
 
 ![Kapital över tid](graf_langkort.svg)
 
 | | |
 |---|---|
-| Kapital | **12 167.90 USDT** (+21.68%) |
-| Köp & håll samma tid | -20.14% |
+| Kapital | **12 163.38 USDT** (+21.63%) |
+| Köp & håll samma tid | -20.03% |
 | Avslutade affärer | 31 (97 % vinster) |
 | Snitt per affär | +7.97% |
 | Bästa | +18.21% ETHUSDT |
@@ -44,6 +44,6 @@ Rädsla/girighet: **11** (Extreme Fear)
 
 | Position | Sida | Insats | Resultat |
 |---|---|---|---|
-| BNBUSDT | Kort | 1 024.72 | +21.29% |
-| PEPEUSDT | Kort | 440.99 | +14.13% |
+| BNBUSDT | Kort | 1 024.72 | +21.07% |
+| PEPEUSDT | Kort | 440.99 | +13.62% |
 | BONKUSDT | Kort | 540.36 | +13.20% |
