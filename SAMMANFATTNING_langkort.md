@@ -1,13 +1,13 @@
 ## Trendbot (lång + kort)
 
-Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-22 22:59 (UTC)
+Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-22 23:59 (UTC)
 
 ![Kapital över tid](graf_langkort.svg)
 
 | | |
 |---|---|
-| Kapital | **12 135.95 USDT** (+21.36%) |
-| Köp & håll samma tid | -18.54% |
+| Kapital | **12 130.19 USDT** (+21.30%) |
+| Köp & håll samma tid | -18.20% |
 | Avslutade affärer | 32 (97 % vinster) |
 | Snitt per affär | +8.32% |
 | Bästa | +19.12% BNBUSDT |
@@ -18,5 +18,5 @@ Spärrade p.g.a. nyheter: BNBUSDT
 
 | Position | Sida | Insats | Resultat |
 |---|---|---|---|
-| PEPEUSDT | Kort | 440.99 | +12.84% |
-| BONKUSDT | Kort | 540.36 | +12.35% |
+| PEPEUSDT | Kort | 440.99 | +12.59% |
+| BONKUSDT | Kort | 540.36 | +11.49% |
