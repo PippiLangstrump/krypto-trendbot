@@ -1,16 +1,16 @@
-## 🕐 Kl 08:00 – 24/11
+## 🕐 Kl 09:00 – 24/11
 <sub>Låtsaspengar · varje bot startade med 102 729 kr</sub>
 
-Status: ✅ igång – kollade priserna 3 547 gånger senaste körningen  
+Status: ✅ igång – kollade priserna 3 552 gånger senaste körningen  
 **Bot 1 – köper bara: har 102 428 kr** – har förlorat 301 kr totalt (−0,3 %)  
 Senaste dygnet: +0 kr · Affärer idag: 0 · totalt: 1  
 Bästa affär hittills: PEPE (köpt, såld) −2,8 % = −301 kr  
 Sämsta affär hittills: PEPE (köpt, såld) −2,8 % = −301 kr  
 Äger/blankar: inget – väntar på bättre läge
 
-Status: ✅ igång – kollade priserna 3 526 gånger senaste körningen  
-**Bot 2 – köper och blankar: har 121 009 kr** – har tjänat 18 280 kr totalt (+17,8 %)  
-Senaste dygnet: −2 342 kr · Affärer idag: 1 · totalt: 47  
+Status: ✅ igång – kollade priserna 3 532 gånger senaste körningen  
+**Bot 2 – köper och blankar: har 121 565 kr** – har tjänat 18 836 kr totalt (+18,3 %)  
+Senaste dygnet: −1 695 kr · Affärer idag: 1 · totalt: 47  
 Bästa affär hittills: BNB (blankat, såld) +19,1 % = +2 013 kr  
 Sämsta affär hittills: XRP (blankat, såld) −10,0 % = −887 kr  
 Äger/blankar: ADA (blankat), AVAX (blankat), BTC (blankat), DOGE (blankat), ETH (blankat), FLOKI (blankat), LINK (blankat), SHIB (blankat), SUI (blankat), WIF (blankat), BNB (blankat)
@@ -22,25 +22,25 @@ Bästa just nu: SHIB −0,1 % = −32 kr
 Sämsta just nu: SHIB −0,1 % = −32 kr  
 Samlar på: SHIB
 
-**Bot 4 – daytradern: har 91 480 kr** – har förlorat 11 249 kr totalt (−11,0 %)  
-Senaste dygnet: −1 255 kr · Affärer senaste timmen: 1 · idag: 24 · totalt: 550 · vinstandel: 45 %  
+**Bot 4 – daytradern: har 91 177 kr** – har förlorat 11 552 kr totalt (−11,2 %)  
+Senaste dygnet: −1 823 kr · Affärer senaste timmen: 1 · idag: 25 · totalt: 551 · vinstandel: 44 %  
 Bästa affär: BONK (blankat) +6,9 % = +1 339 kr  
 Sämsta affär: PEPE (köpt) −1,8 % = −569 kr  
-Öppna just nu: SOL (köpt), BTC (köpt), SHIB (köpt), BONK (köpt), AVAX (blankat)
+Öppna just nu: SOL (köpt), BTC (köpt), BONK (köpt), AVAX (blankat), SUI (blankat)
 
-**Bot 5 – lagledaren (fördelar mellan de andra): har 104 081 kr** – har tjänat 1 352 kr totalt (+1,3 %)  
-Senaste dygnet: −1 515 kr · Fördelning: Bot 1 7 %, Bot 2 73 %, Bot 3 7 %, Bot 4 7 %, Bot 6 7 % · nästa omfördelning 2026-11-26
+**Bot 5 – lagledaren (fördelar mellan de andra): har 104 388 kr** – har tjänat 1 659 kr totalt (+1,6 %)  
+Senaste dygnet: −1 289 kr · Fördelning: Bot 1 7 %, Bot 2 73 %, Bot 3 7 %, Bot 4 7 %, Bot 6 7 % · nästa omfördelning 2026-11-26
 
-**Bot 6 – mönsterläsaren: har 97 427 kr** – har förlorat 5 302 kr totalt (−5,2 %)  
-Senaste dygnet: −23 kr · öppna: 3 · avslutade: 98  
+**Bot 6 – mönsterläsaren: har 97 173 kr** – har förlorat 5 556 kr totalt (−5,4 %)  
+Senaste dygnet: −240 kr · öppna: 3 · avslutade: 98  
 Bästa affär: SOL (Utbrott med volym) +3,7 % = +1 228 kr  
 Sämsta affär: ETH (Utbrott med volym) −3,5 % = −1 251 kr  
 Öppna: LINK (köpt, Trendstruktur + rekyl), WIF (köpt, Trendstruktur + rekyl), ADA (köpt, Trendstruktur + rekyl)  
 Mönstrens betyg (lärt sig hittills): Utbrott med volym −1,4 % (57 st), Dubbelbotten/-topp +0,8 % (13 st), Trendstruktur + rekyl −1,0 % (28 st)
 
-**Bot 7 – myntjägaren: har 35 479 kr** – har förlorat 67 250 kr totalt (−65,5 %)  
-Senaste dygnet: −4 221 kr · lotter: 13 · månbiljetter (2x+): 1 · försäljningar: 117  
-Bästa lott just nu: Rings (solana) 1.24x
+**Bot 7 – myntjägaren: har 35 429 kr** – har förlorat 67 300 kr totalt (−65,5 %)  
+Senaste dygnet: −4 913 kr · lotter: 12 · månbiljetter (2x+): 1 · försäljningar: 118  
+Bästa lott just nu: CLAUDIA (ethereum) 1.36x
 
 **Bot 8 – kopieraren: har 9 851 kr** – har förlorat 92 878 kr totalt (−90,4 %)  
 Senaste dygnet: +0 kr · öppna: 5 · försäljningar: 1141  
@@ -50,8 +50,8 @@ Resultat per trader: Decu −7,1 %, Trunoest −22,4 %, Kadenox −24,3 %, Cente
 Senaste dygnet: +0 kr · öppna: 0 · försäljningar: 1725  
 Resultat per trader: Pain +0,9 %, Yugi −8,8 %, Decu −11,2 %, Cupsey −13,4 %, Trunoest −14,6 %, Theo −17,9 %, West −19,3 %, Kadenox −21,3 %, Cented −24,7 %, Kev −35,1 %
 
-**Bot 9 – nyhetsjägaren: har 102 350 kr** – har förlorat 379 kr totalt (−0,4 %)  
-Senaste dygnet: −47 kr · öppna: NEXO (samarbete)  
+**Bot 9 – nyhetsjägaren: har 102 357 kr** – har förlorat 372 kr totalt (−0,4 %)  
+Senaste dygnet: −40 kr · öppna: NEXO (samarbete)  
 Senaste köpnyhet: Nexo partners with FactSet to provide digital asset research to clients
 
 <sub>1 dollar = 10.27 kr · @PippiLangstrump</sub>

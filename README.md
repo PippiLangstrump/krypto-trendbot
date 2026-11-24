@@ -6,14 +6,14 @@ Detaljerade rapporter: trend_rapport_live.html och trend_rapport_live_langkort.h
 
 ## Trendbot (bara lång)
 
-Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-24 06:59 (UTC)
+Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-24 07:59 (UTC)
 
 ![Kapital över tid](graf_lang.svg)
 
 | | |
 |---|---|
 | Kapital | **9 970.68 USDT** (-0.29%) |
-| Köp & håll samma tid | -16.42% |
+| Köp & håll samma tid | -16.80% |
 | Avslutade affärer | 1 (0 % vinster) |
 | Snitt per affär | -2.76% |
 | Bästa | -2.76% PEPEUSDT |
@@ -27,14 +27,14 @@ Rädsla/girighet: **11** (Extreme Fear)
 
 ## Trendbot (lång + kort)
 
-Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-24 06:59 (UTC)
+Igång sedan 2026-11-11 22:05 · uppdaterad 2026-11-24 07:59 (UTC)
 
 ![Kapital över tid](graf_langkort.svg)
 
 | | |
 |---|---|
-| Kapital | **11 782.79 USDT** (+17.83%) |
-| Köp & håll samma tid | -16.36% |
+| Kapital | **11 827.15 USDT** (+18.27%) |
+| Köp & håll samma tid | -16.77% |
 | Avslutade affärer | 36 (92 % vinster) |
 | Snitt per affär | +7.31% |
 | Bästa | +19.12% BNBUSDT |
@@ -44,14 +44,14 @@ Rädsla/girighet: **11** (Extreme Fear)
 
 | Position | Sida | Insats | Resultat |
 |---|---|---|---|
-| ADAUSDT | Kort | 792.52 | -2.81% |
-| AVAXUSDT | Kort | 684.15 | -1.20% |
-| BTCUSDT | Kort | 1 189.66 | +1.28% |
-| DOGEUSDT | Kort | 870.05 | -2.16% |
-| ETHUSDT | Kort | 846.79 | +1.41% |
-| FLOKIUSDT | Kort | 741.48 | -2.93% |
-| LINKUSDT | Kort | 735.78 | -3.17% |
-| SHIBUSDT | Kort | 957.51 | -2.00% |
-| SUIUSDT | Kort | 703.16 | -2.59% |
-| WIFUSDT | Kort | 725.56 | -4.94% |
-| BNBUSDT | Kort | 1 018.31 | +0.54% |
+| ADAUSDT | Kort | 792.52 | -2.05% |
+| AVAXUSDT | Kort | 684.15 | -0.57% |
+| BTCUSDT | Kort | 1 189.66 | +1.38% |
+| DOGEUSDT | Kort | 870.05 | -1.53% |
+| ETHUSDT | Kort | 846.79 | +1.59% |
+| FLOKIUSDT | Kort | 741.48 | -2.38% |
+| LINKUSDT | Kort | 735.78 | -2.63% |
+| SHIBUSDT | Kort | 957.51 | -1.44% |
+| SUIUSDT | Kort | 703.16 | -1.74% |
+| WIFUSDT | Kort | 725.56 | -4.36% |
+| BNBUSDT | Kort | 1 018.31 | +0.78% |
